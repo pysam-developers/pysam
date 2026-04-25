@@ -1246,13 +1246,33 @@ cdef bcf_header_remove_hrec(VariantHeader header, int i):
 #FIXME: passing bcf_hrec_t* is not safe, since we cannot control the
 #       object lifetime.
 cdef class VariantHeaderRecord(object):
-    """header record from a :class:`VariantHeader` object"""
+    """A mapping-like interface to the key-value attributes of a single VCF header line. Accessed by
+    iterating over :attr:`VariantHeader.records` or through :attr:`VariantMetadata.record`.
+
+    Note:
+      Use of :attr:`VariantMetadata` should be generally preferred for accessing standard fields of
+      structured FILTER / INFO / FORMAT header records. Use this class for accessing generic
+      (``##key=value``) header records and non-standard (i.e. not ID, Number, Type, or Description)
+      fields of structured header records.
+
+    Example:
+      Here is an example of iterating over :class:`VariantHeaderRecord` objects and printing records::
+
+          variant_file = pysam.VariantFile('/path/to/file.vcf.gz')
+          for record in variant_file.header.records:
+              if record.type == "GENERIC":
+                  print(record.key, record.value)
+              else:
+                  print(record.type, dict(record))
+    """
     def __init__(self, *args, **kwargs):
-        raise TypeError('this class cannot be instantiated from Python')
+        raise TypeError('This class cannot be instantiated from Python')
 
     @property
     def type(self):
-        """header type: FILTER, INFO, FORMAT, CONTIG, STRUCTURED, or GENERIC"""
+        """str or None : The header type. One of ``FILTER``, ``INFO``, ``FORMAT``, ``CONTIG``,
+        ``STRUCTURED``, or ``GENERIC``, or None if the header record is unavailable.
+        """
         cdef bcf_hrec_t *r = self.ptr
         if not r:
             return None
@@ -1260,19 +1280,21 @@ cdef class VariantHeaderRecord(object):
 
     @property
     def key(self):
-        """header key (the part before '=', in FILTER/INFO/FORMAT/contig/fileformat etc.)"""
+        """str or None : The header key (the part before '=', e.g., ``FILTER``, ``contig``, ``fileformat``)."""
         cdef bcf_hrec_t *r = self.ptr
         return bcf_str_cache_get_charptr(r.key) if r and r.key else None
 
     @property
     def value(self):
-        """header value.  Set only for generic lines, None for FILTER/INFO, etc."""
+        """str or None : The header value.
+        Set only for generic unstructured records. None for structured records such as FILTER, INFO, or FORMAT.
+        """
         cdef bcf_hrec_t *r = self.ptr
         return charptr_to_str(r.value) if r and r.value else None
 
     @property
     def attrs(self):
-        """sequence of additional header attributes"""
+        """tuple of 2-tuple of str or None : A tuple of (attribute name, value) pairs for this header record."""
         cdef bcf_hrec_t *r = self.ptr
         if not r:
             return ()
@@ -1290,7 +1312,6 @@ cdef class VariantHeaderRecord(object):
         return r != NULL and r.nkeys != 0
 
     def __getitem__(self, key):
-        """get attribute value"""
         cdef bcf_hrec_t *r = self.ptr
         cdef int i
         if r:
@@ -1298,7 +1319,7 @@ cdef class VariantHeaderRecord(object):
             for i in range(r.nkeys):
                 if r.keys[i] and r.keys[i] == bkey:
                     return charptr_to_str(r.vals[i]) if r.vals[i] else None
-        raise KeyError('cannot find metadata key')
+        raise KeyError('Cannot find metadata key')
 
     def __iter__(self):
         cdef bcf_hrec_t *r = self.ptr
@@ -1310,7 +1331,20 @@ cdef class VariantHeaderRecord(object):
                 yield bcf_str_cache_get_charptr(r.keys[i])
 
     def get(self, key, default=None):
-        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        """Retrieve the value of the attribute named `key` from this header record.
+
+        Parameters
+        ----------
+        key : str
+            The attribute name to look up (e.g. "ID", "Number", "Type", "Description").
+
+        default
+            Value to return if `key` is not present in the record. Defaults to None.
+
+        Returns
+        -------
+        The value associated with `key`, or `default` if not present.
+        """
         try:
             return self[key]
         except KeyError:
@@ -1325,11 +1359,11 @@ cdef class VariantHeaderRecord(object):
             return True
 
     def iterkeys(self):
-        """D.iterkeys() -> an iterator over the keys of D"""
+        """Return an iterator over the attribute names of this header record (e.g. "ID", "Description")."""
         return iter(self)
 
     def itervalues(self):
-        """D.itervalues() -> an iterator over the values of D"""
+        """Return an iterator over the attribute values of this header record."""
         cdef bcf_hrec_t *r = self.ptr
         if not r:
             return
@@ -1339,7 +1373,7 @@ cdef class VariantHeaderRecord(object):
                 yield charptr_to_str(r.vals[i]) if r.vals[i] else None
 
     def iteritems(self):
-        """D.iteritems() -> an iterator over the (key, value) items of D"""
+        """Return an iterator over attribute ``(name, value)`` pairs for this header record."""
         cdef bcf_hrec_t *r = self.ptr
         if not r:
             return
@@ -1349,21 +1383,21 @@ cdef class VariantHeaderRecord(object):
                 yield (bcf_str_cache_get_charptr(r.keys[i]), charptr_to_str(r.vals[i]) if r.vals[i] else None)
 
     def keys(self):
-        """D.keys() -> list of D's keys"""
+        """Return a list of attribute names in this header record (e.g. "ID", "Description")."""
         return list(self)
 
     def items(self):
-        """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
+        """Return a list of attribute ``(name, value)`` pairs for this header record."""
         return list(self.iteritems())
 
     def values(self):
-        """D.values() -> list of D's values"""
+        """Return a list of attribute values in this header record."""
         return list(self.itervalues())
 
     def update(self, items=(), **kwargs):
-        """D.update([E, ]**F) -> None.
-
-        Update D from dict/iterable E and F.
+        """Update header record attributes, using mapping entries if a :class:`dict`
+        or other mapping is given, or name/value tuples if an iterable is given, and also
+        using any keyword arguments given. Existing attribute values are overwritten.
         """
         if hasattr(items, "items"):
             for k, v in items.items():
@@ -1376,6 +1410,21 @@ cdef class VariantHeaderRecord(object):
             self[k] = v
 
     def pop(self, key, default=_nothing):
+        """Return the value of a given key and remove it from the header record.
+
+        Arguments
+        ---------
+        key: str
+            The `key` to be removed.
+
+        default: Any
+            The default value to return when `key` is not present in the header record.
+
+        Raises
+        ------
+        KeyError:
+            If the `key` is not present and no `default` value is provided.
+        """
         try:
             value = self[key]
             del self[key]
@@ -1394,7 +1443,7 @@ cdef class VariantHeaderRecord(object):
         cdef bcf_hrec_t *r = self.ptr
 
         if not r:
-            raise ValueError('cannot convert deleted record to str')
+            raise ValueError('Cannot convert deleted record to str')
 
         cdef kstring_t hrec_str
         hrec_str.l = hrec_str.m = 0
@@ -1411,6 +1460,11 @@ cdef class VariantHeaderRecord(object):
 
     # FIXME: Not safe -- causes trivial segfaults at the moment
     def remove(self):
+        """Remove this record from the VCF header.
+
+        Warning:
+          Please avoid. This is currently unsafe and causes segfaults.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef bcf_hrec_t *r = self.ptr
         if not r:
@@ -1423,7 +1477,7 @@ cdef class VariantHeaderRecord(object):
 
 cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_t *hdr):
     if not header:
-        raise ValueError('invalid VariantHeader')
+        raise ValueError('Invalid VariantHeader')
 
     if not hdr:
         return None
@@ -1436,9 +1490,13 @@ cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_
 
 
 cdef class VariantHeaderRecords(object):
-    """sequence of :class:`VariantHeaderRecord` object from a :class:`VariantHeader` object"""
+    """A sequence of :class:`VariantHeaderRecord` objects from a :class:`VariantHeader` object.
+
+    Supports iteration and integer indexing to access individual header records. Accessed via
+    :attr:`VariantHeader.records`.
+    """
     def __init__(self, *args, **kwargs):
-        raise TypeError('this class cannot be instantiated from Python')
+        raise TypeError('This class cannot be instantiated from Python')
 
     def __len__(self):
         return self.header.ptr.nhrec
@@ -1449,7 +1507,7 @@ cdef class VariantHeaderRecords(object):
     def __getitem__(self, index):
         cdef int32_t i = index
         if i < 0 or i >= self.header.ptr.nhrec:
-            raise IndexError('invalid header record index')
+            raise IndexError('Invalid header record index')
         return makeVariantHeaderRecord(self.header, self.header.ptr.hrec[i])
 
     def __iter__(self):
@@ -1462,7 +1520,7 @@ cdef class VariantHeaderRecords(object):
 
 cdef VariantHeaderRecords makeVariantHeaderRecords(VariantHeader header):
     if not header:
-        raise ValueError('invalid VariantHeader')
+        raise ValueError('Invalid VariantHeader')
 
     cdef VariantHeaderRecords records = VariantHeaderRecords.__new__(VariantHeaderRecords)
     records.header = header
@@ -1595,12 +1653,49 @@ cdef VariantMetadata makeVariantMetadata(VariantHeader header, int type, int id)
 
 
 cdef class VariantHeaderMetadata(object):
-    """mapping from filter, info or format name to :class:`VariantMetadata` object"""
+    """A mapping from FILTER, INFO, or FORMAT field names to :class:`VariantMetadata` objects.
+    Accessed via :attr:`VariantHeader.filters`, :attr:`VariantHeader.info`, or
+    :attr:`VariantHeader.formats`.
+
+    Example:
+      Here is an example of iterating over the INFO metadata in a :class:`VariantHeader`::
+
+          variant_file = pysam.VariantFile('/path/to/file.vcf.gz')
+          for name, meta in variant_file.header.info.items():
+              print(name, meta.type, meta.number, meta.description)
+    """
     def __init__(self, *args, **kwargs):
-        raise TypeError('this class cannot be instantiated from Python')
+        raise TypeError('This class cannot be instantiated from Python')
 
     def add(self, id, number, type, description, **kwargs):
-        """Add a new filter, info or format record"""
+        """Add a new FILTER, INFO, or FORMAT metadata line to the VCF header.
+
+        Parameters
+        ----------
+        id : str
+            The metadata field name (the "ID" attribute of the header line).
+
+        number : int or str or None
+            The number of values for this field. Use None for FILTER fields. Use an integer
+            for a fixed count, or one of ``.``, ``A``, ``R``, or ``G`` for variable counts.
+
+        type : str
+            The value type for this field. Use None for FILTER fields. Must be one of
+            ``Flag``, ``Integer``, ``Float``, or ``String``.
+
+        description : str
+            A human-readable description of the metadata field.
+
+        kwargs
+            Key/value pairs denoting additional non-standard optional fields.
+
+        Raises
+        ------
+        ValueError
+            If `id` is already present in the VCF header,
+            if `number` and `type` are not None when adding a filter,
+            or if an unknown `type` is provided.
+        """
         if id in self:
             raise ValueError('Header already exists for id={}'.format(id))
 
@@ -1613,7 +1708,7 @@ cdef class VariantHeaderMetadata(object):
             items = [('ID', unquoted_str(id)), ('Description', description)]
         else:
             if type not in VALUE_TYPES:
-                raise ValueError('unknown type specified: {}'.format(type))
+                raise ValueError('Unknown type specified: {}'.format(type))
             if number is None:
                 number = '.'
 
@@ -1655,11 +1750,26 @@ cdef class VariantHeaderMetadata(object):
         cdef khiter_t k = kh_get_vdict(d, bkey)
 
         if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
-            raise KeyError('invalid key: {}'.format(key))
+            raise KeyError('Invalid key: {}'.format(key))
 
         return makeVariantMetadata(self.header, self.type, kh_val_vdict(d, k).id)
 
     def remove_header(self, key):
+        """Mark a FILTER, INFO, or FORMAT metadata line for deletion from the VCF header.
+
+        Warning:
+          Due to HTSlib limitations, the record is not immediately removed from the header.
+
+        Parameters
+        ----------
+        key : str
+            The metadata field name ("ID" attribute) to remove.
+
+        Raises
+        ------
+        KeyError
+            If `key` is not present in the VCF header.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_ID]
 
@@ -1667,12 +1777,17 @@ cdef class VariantHeaderMetadata(object):
         cdef khiter_t k = kh_get_vdict(d, bkey)
 
         if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
-            raise KeyError('invalid key: {}'.format(key))
+            raise KeyError('Invalid key: {}'.format(key))
 
         bcf_hdr_remove(hdr, self.type, bkey)
         #bcf_hdr_sync(hdr)
 
     def clear_header(self):
+        """Remove all FILTER, INFO, or FORMAT metadata lines of this type from the VCF header.
+
+        Warning:
+          Due to HTSlib limitations, the records are not immediately removed from the header.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
         bcf_hdr_remove(hdr, self.type, NULL)
         #bcf_hdr_sync(hdr)
@@ -1688,7 +1803,16 @@ cdef class VariantHeaderMetadata(object):
                 yield bcf_str_cache_get_charptr(idpair.key)
 
     def get(self, key, default=None):
-        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        """Retrieve the :class:`VariantMetadata` for the field named `key`, or `default` if not present.
+
+        Parameters
+        ----------
+        key : str
+            The field name to look up.
+
+        default
+            Value to return if `key` is not present in the header record. Defaults to None.
+        """
         try:
             return self[key]
         except KeyError:
@@ -1703,29 +1827,29 @@ cdef class VariantHeaderMetadata(object):
             return True
 
     def iterkeys(self):
-        """D.iterkeys() -> an iterator over the keys of D"""
+        """Return an iterator over the field names in this metadata collection."""
         return iter(self)
 
     def itervalues(self):
-        """D.itervalues() -> an iterator over the values of D"""
+        """Return an iterator over the :class:`VariantMetadata` objects in this collection."""
         for key in self:
             yield self[key]
 
     def iteritems(self):
-        """D.iteritems() -> an iterator over the (key, value) items of D"""
+        """Return an iterator over field (``name``, :class:`VariantMetadata`) pairs."""
         for key in self:
             yield (key, self[key])
 
     def keys(self):
-        """D.keys() -> list of D's keys"""
+        """Return a list of field names in this metadata collection."""
         return list(self)
 
     def items(self):
-        """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
+        """Return a list of field (``name``, :class:`VariantMetadata`) pairs."""
         return list(self.iteritems())
 
     def values(self):
-        """D.values() -> list of D's values"""
+        """Return a list of :class:`VariantMetadata` objects in this collection."""
         return list(self.itervalues())
 
     # Mappings are not hashable by default, but subclasses can change this
@@ -1736,7 +1860,7 @@ cdef class VariantHeaderMetadata(object):
 
 cdef VariantHeaderMetadata makeVariantHeaderMetadata(VariantHeader header, int32_t type):
     if not header:
-        raise ValueError('invalid VariantHeader')
+        raise ValueError('Invalid VariantHeader')
 
     cdef VariantHeaderMetadata meta = VariantHeaderMetadata.__new__(VariantHeaderMetadata)
     meta.header = header
@@ -1812,9 +1936,18 @@ cdef VariantContig makeVariantContig(VariantHeader header, int id):
 
 
 cdef class VariantHeaderContigs(object):
-    """mapping from contig name or index to :class:`VariantContig` object."""
+    """A mapping from contig name or integer index to a :class:`VariantContig` object.
+    Accessed via :attr:`VariantHeader.contigs`.
+
+    Example:
+      Here is an example of iterating over the contigs in a :class:`VariantHeader`::
+
+          variant_file = pysam.VariantFile('/path/to/file.vcf.gz')
+          for name, contig in variant_file.header.contigs.items():
+              print(name, contig.length)
+    """
     def __init__(self, *args, **kwargs):
-        raise TypeError('this class cannot be instantiated from Python')
+        raise TypeError('This class cannot be instantiated from Python')
 
     def __len__(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
@@ -1833,7 +1966,7 @@ cdef class VariantHeaderContigs(object):
         if isinstance(key, int):
             index = key
             if index < 0 or index >= hdr.n[BCF_DT_CTG]:
-                raise IndexError('invalid contig index')
+                raise IndexError('Invalid contig index')
             return makeVariantContig(self.header, index)
 
         cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_CTG]
@@ -1841,13 +1974,31 @@ cdef class VariantHeaderContigs(object):
         cdef khiter_t k = kh_get_vdict(d, bkey)
 
         if k == kh_end(d):
-            raise KeyError('invalid contig: {}'.format(key))
+            raise KeyError('Invalid contig: {}'.format(key))
 
         cdef int id = kh_val_vdict(d, k).id
 
         return makeVariantContig(self.header, id)
 
     def remove_header(self, key):
+        """Mark a ``##contig`` metadata line for removal from the VCF header.
+
+        Warning:
+          Due to HTSlib limitations, the record is not immediately removed from the header.
+
+        Parameters
+        ----------
+        key : str or int
+            The contig name or integer index to remove.
+
+        Raises
+        ------
+        IndexError
+            If `key` is an integer and is out of range.
+
+        KeyError
+            If `key` is a string and is not present in the VCF header.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef int index
         cdef const char *ckey
@@ -1857,18 +2008,23 @@ cdef class VariantHeaderContigs(object):
         if isinstance(key, int):
             index = key
             if index < 0 or index >= hdr.n[BCF_DT_CTG]:
-                raise IndexError('invalid contig index')
+                raise IndexError('Invalid contig index')
             ckey = hdr.id[BCF_DT_CTG][self.id].key
         else:
             d = <vdict_t *>hdr.dict[BCF_DT_CTG]
             key = force_bytes(key)
             if kh_get_vdict(d, key) == kh_end(d):
-                raise KeyError('invalid contig: {}'.format(key))
+                raise KeyError('Invalid contig: {}'.format(key))
             ckey = key
 
         bcf_hdr_remove(hdr, BCF_HL_CTG, ckey)
 
     def clear_header(self):
+        """Mark all ``##contig`` metadata lines for removal from the VCF header.
+
+        Warning:
+          Due to HTSlib limitations, the records are not immediately removed from the header.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
         bcf_hdr_remove(hdr, BCF_HL_CTG, NULL)
         #bcf_hdr_sync(hdr)
@@ -1884,7 +2040,7 @@ cdef class VariantHeaderContigs(object):
             yield bcf_str_cache_get_charptr(bcf_hdr_id2name(hdr, i))
 
     def get(self, key, default=None):
-        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        """Retrieve the :class:`VariantContig` for the contig named `key`, or `default` if not present."""
         try:
             return self[key]
         except KeyError:
@@ -1899,29 +2055,29 @@ cdef class VariantHeaderContigs(object):
             return True
 
     def iterkeys(self):
-        """D.iterkeys() -> an iterator over the keys of D"""
+        """Return an iterator over the contig names in the VCF header."""
         return iter(self)
 
     def itervalues(self):
-        """D.itervalues() -> an iterator over the values of D"""
+        """Return an iterator over the :class:`VariantContig` objects in the VCF header."""
         for key in self:
             yield self[key]
 
     def iteritems(self):
-        """D.iteritems() -> an iterator over the (key, value) items of D"""
+        """Return an iterator over contig (``name``, :class:`VariantContig`) pairs in the VCF header."""
         for key in self:
             yield (key, self[key])
 
     def keys(self):
-        """D.keys() -> list of D's keys"""
+        """Return a list of contig names in the VCF header."""
         return list(self)
 
     def items(self):
-        """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
+        """Return a list of contig (``name``, :class:`VariantContig`) pairs in the VCF header."""
         return list(self.iteritems())
 
     def values(self):
-        """D.values() -> list of D's values"""
+        """Return a list of :class:`VariantContig` objects in the VCF header."""
         return list(self.itervalues())
 
     # Mappings are not hashable by default, but subclasses can change this
@@ -1930,7 +2086,24 @@ cdef class VariantHeaderContigs(object):
     #TODO: implement __richcmp__
 
     def add(self, id, length=None, **kwargs):
-        """Add a new contig record"""
+        """Add a new ``##contig`` metadata line to the VCF header.
+
+        Parameters
+        ----------
+        id : str
+            The contig name.
+
+        length : int, optional
+            The contig length.
+
+        kwargs
+            Key/value pairs denoting additional non-standard optional fields.
+
+        Raises
+        ------
+        ValueError
+            If a contig with the given `id` is already present in the VCF header.
+        """
         if id in self:
             raise ValueError('Header already exists for contig {}'.format(id))
 
@@ -1943,7 +2116,7 @@ cdef class VariantHeaderContigs(object):
 
 cdef VariantHeaderContigs makeVariantHeaderContigs(VariantHeader header):
     if not header:
-        raise ValueError('invalid VariantHeader')
+        raise ValueError('Invalid VariantHeader')
 
     cdef VariantHeaderContigs contigs = VariantHeaderContigs.__new__(VariantHeaderContigs)
     contigs.header = header
@@ -1952,9 +2125,19 @@ cdef VariantHeaderContigs makeVariantHeaderContigs(VariantHeader header):
 
 
 cdef class VariantHeaderSamples(object):
-    """sequence of sample names from a :class:`VariantHeader` object"""
+    """A sequence of sample names from a :class:`VariantHeader` object. Supports iteration
+    and integer indexing to access individual sample names. Accessed via
+    :attr:`VariantHeader.samples`.
+
+    Example:
+      Here is an example of iterating over the samples in a :class:`VariantHeader`::
+
+          variant_file = pysam.VariantFile('/path/to/file.vcf.gz')
+          for sample_name in variant_file.header.samples:
+              print(sample_name)
+    """
     def __init__(self, *args, **kwargs):
-        raise TypeError('this class cannot be instantiated from Python')
+        raise TypeError('This class cannot be instantiated from Python')
 
     def __len__(self):
         return bcf_hdr_nsamples(self.header.ptr)
@@ -1968,7 +2151,7 @@ cdef class VariantHeaderSamples(object):
         cdef int32_t i = index
 
         if i < 0 or i >= n:
-            raise IndexError('invalid sample index')
+            raise IndexError('Invalid sample index')
 
         return charptr_to_str(hdr.samples[i])
 
@@ -1993,13 +2176,19 @@ cdef class VariantHeaderSamples(object):
     #TODO: implement __richcmp__
 
     def add(self, name):
-        """Add a new sample"""
+        """Add a new sample to the VCF header.
+
+        Parameters
+        ----------
+        name : str
+            The sample name to add.
+        """
         self.header.add_sample(name)
 
 
 cdef VariantHeaderSamples makeVariantHeaderSamples(VariantHeader header):
     if not header:
-        raise ValueError('invalid VariantHeader')
+        raise ValueError('Invalid VariantHeader')
 
     cdef VariantHeaderSamples samples = VariantHeaderSamples.__new__(VariantHeaderSamples)
     samples.header = header
@@ -2008,7 +2197,26 @@ cdef VariantHeaderSamples makeVariantHeaderSamples(VariantHeader header):
 
 
 cdef class VariantHeader(object):
-    """header information for a :class:`VariantFile` object"""
+    """Header information for a :class:`VariantFile` object.
+
+    The :term:`VCF` header contains metadata lines that define the structure of the VCF file,
+    including the VCF format version, FILTER, INFO, ALT, and FORMAT field definitions, :term:`contig`
+    (chromosome) definitions, and sample names. Accessed via :attr:`VariantFile.header` attribute.
+
+    Example:
+      Here is an example of reading and printing VCF header information::
+
+          >>> variant_file = pysam.VariantFile('/path/to/file.vcf.gz')
+          >>> header = variant_file.header
+          >>> print(f"version: {header.version}")
+          version: VCFv4.5
+          >>> print(f"samples: {list(header.samples)}")
+          samples: ["NA00001", "NA00002"]
+          >>> print(f"contigs: {list(header.contigs)}")
+          contigs: ["chr1"]
+          >>> print(f"info: {list(header.info)}")
+          info: ["NS", "AN", "AC", "DP", "AF"]
+    """
     #FIXME: Add structured proxy
     #FIXME: Add generic proxy
     #FIXME: Add mutable methods
@@ -2021,7 +2229,7 @@ cdef class VariantHeader(object):
     def __init__(self):
         self.ptr = bcf_hdr_init(b'w')
         if not self.ptr:
-            raise ValueError('cannot create VariantHeader')
+            raise ValueError('Cannot create VariantHeader')
 
     def __dealloc__(self):
         if self.ptr:
@@ -2032,58 +2240,87 @@ cdef class VariantHeader(object):
         return self.ptr != NULL
 
     def copy(self):
+        """Return a copy of this :class:`VariantHeader` object."""
         return makeVariantHeader(bcf_hdr_dup(self.ptr))
 
     def merge(self, VariantHeader header):
+        """Merge another :class:`VariantHeader` into this header.
+
+        Parameters
+        ----------
+        header : VariantHeader
+            The header to merge into this one.
+
+        Raises
+        ------
+        ValueError
+            If `header` is None.
+        """
         if header is None:
-            raise ValueError('header must not be None')
+            raise ValueError('Header must not be None')
         bcf_hdr_merge(self.ptr, header.ptr)
 
     @property
     def version(self):
-        """VCF version"""
+        """str or None : The content of the ``##fileformat`` line (e.g., "VCFv4.5") if present, otherwise None."""
         return force_str(bcf_hdr_get_version(self.ptr))
 
     @property
     def samples(self):
-        """samples (:class:`VariantHeaderSamples`)"""
+        """VariantHeaderSamples : The header's ``##SAMPLE`` metadata lines, as a sequence
+        of sample names. See :class:`VariantHeaderSamples` for details.
+        """
         return makeVariantHeaderSamples(self)
 
     @property
     def records(self):
-        """header records (:class:`VariantHeaderRecords`)"""
+        """VariantHeaderRecords : All the header's metadata lines of any type, as a sequence
+        of :class:`VariantHeaderRecord`. See :class:`VariantHeaderRecords` for details.
+        """
         return makeVariantHeaderRecords(self)
 
     @property
     def contigs(self):
-        """contig information (:class:`VariantHeaderContigs`)"""
+        """VariantHeaderContigs : The header's ``##contig`` metadata lines, presented as a mapping
+        of the contig names or their indices to their corresponding :class:`VariantContig`.
+        See :class:`VariantHeaderContigs` for details.
+        """
         return makeVariantHeaderContigs(self)
 
     @property
     def filters(self):
-        """filter metadata (:class:`VariantHeaderMetadata`)"""
+        """VariantHeaderMetadata : The header's ``##FILTER`` metadata lines, presented
+        as a mapping of the filter names to their corresponding :class:`VariantMetadata`.
+        See :class:`VariantHeaderMetadata` for details.
+        """
         return makeVariantHeaderMetadata(self, BCF_HL_FLT)
 
     @property
     def info(self):
-        """info metadata (:class:`VariantHeaderMetadata`)"""
+        """VariantHeaderMetadata : The header's ``##INFO`` metadata lines, presented
+        as a mapping of the field names to their corresponding :class:`VariantMetadata`.
+        See :class:`VariantHeaderMetadata` for details.
+        """
         return makeVariantHeaderMetadata(self, BCF_HL_INFO)
 
     @property
     def formats(self):
-        """format metadata (:class:`VariantHeaderMetadata`)"""
+        """VariantHeaderMetadata : The header's ``##FORMAT`` metadata lines, presented
+        as a mapping of the field names to their corresponding :class:`VariantMetadata`.
+        See :class:`VariantHeaderMetadata` for details.
+        """
         return makeVariantHeaderMetadata(self, BCF_HL_FMT)
 
     @property
     def alts(self):
-        """alt metadata (:class:`dict` ID->record).
+        """dict[str, VariantHeaderRecord] : A dictionary mapping all ALT fields in the VCF header
+        to their associated :class:`VariantHeaderRecord`.
 
-        The data returned just a snapshot of alt records, is created
-        every time the property is requested, and modifications will
-        not be reflected in the header metadata and vice versa.
+        ALT meta-information lines describe the possible symbolic alternate alleles in the ALT column
+        of VCF records. Most commonly used for structural variant types (e.g. "CNV") and IUPAC
+        ambiguity codes (e.g. "R").
 
-        i.e. it is just a dict that reflects the state of alt records
-        at the time it is created.
+        `alts` is a copy and modifications to this dictionary will not be reflected in the header metadata.
         """
         return {record['ID']:record for record in self.records
                 if record.key.upper() == 'ALT' }
@@ -2098,7 +2335,7 @@ cdef class VariantHeader(object):
         if missing_samples:
             # FIXME: add specialized exception with payload
             raise ValueError(
-                'missing {:d} requested samples'.format(
+                'Missing {:d} requested samples'.format(
                     len(missing_samples)))
 
         keep_samples = force_bytes(','.join(keep_samples))
@@ -2129,16 +2366,50 @@ cdef class VariantHeader(object):
     def new_record(self, contig=None, start=0, stop=0, alleles=None,
                          id=None, qual=None, filter=None, info=None, samples=None,
                          **kwargs):
-        """Create a new empty VariantRecord.
+        """Create a new empty :class:`VariantRecord`.
 
-        Arguments are currently experimental.  Use with caution and expect
-        changes in upcoming releases.
+        Parameters
+        ----------
+        contig : str, optional
+            The :term:`contig` name for the new record.
 
+        start : int
+            The 0-based start position of the variant. Defaults to 0.
+
+        stop : int
+            The 0-based exclusive end position of the variant. Defaults to 0.
+
+        alleles : tuple, optional
+            The alleles for the new record (reference allele first).
+
+        id : str, optional
+            The variant ID (the ID column in the :term:`VCF`).
+
+        qual : float, optional
+            The variant quality score (the QUAL column in the :term:`VCF`).
+
+        filter : str or list, optional
+            A filter name or list of filter names to apply to the record.
+
+        info : dict, optional
+            A mapping of INFO field names to values.
+
+        samples : list of dict, optional
+            A list of mappings of FORMAT field names to values, one per sample.
+
+        Warning
+        -------
+        Arguments are currently experimental. Use with caution and expect changes in upcoming releases.
+
+        Raises
+        ------
+        MemoryError
+            If a record is unable to be allocated.
         """
         rec = makeVariantRecord(self, bcf_init())
 
         if not rec:
-            raise MemoryError('unable to allocate BCF record')
+            raise MemoryError('Unable to allocate BCF record')
 
         rec.ptr.n_sample = bcf_hdr_nsamples(self.ptr)
 
@@ -2173,9 +2444,15 @@ cdef class VariantHeader(object):
         return rec
 
     def add_record(self, VariantHeaderRecord record):
-        """Add an existing :class:`VariantHeaderRecord` to this header"""
+        """Add an existing :class:`VariantHeaderRecord` to this header.
+
+        Raises
+        ------
+        ValueError
+            if `record` is None.
+        """
         if record is None:
-            raise ValueError('record must not be None')
+            raise ValueError('Record must not be None')
 
         cdef bcf_hrec_t *hrec = bcf_hrec_dup(record.ptr)
 
@@ -2184,18 +2461,53 @@ cdef class VariantHeader(object):
         self._hdr_sync()
 
     def add_line(self, line):
-        """Add a metadata line to this header"""
+        """Add a metadata line to this :term:`VCF` header.
+
+        Parameters
+        ----------
+        line : str
+            The metadata line to add to this VCF header.
+
+        Raises
+        ------
+        ValueError
+            if the provided header `line` is invalid.
+        """
         bline = force_bytes(line)
         if bcf_hdr_append(self.ptr, bline) < 0:
-            raise ValueError('invalid header line')
+            raise ValueError('Invalid header line')
 
         self._hdr_sync()
 
 
     def add_meta(self, key, value=None, items=None):
-        """Add metadata to this header"""
+        """Add a metadata line to this :term:`VCF` header.
+
+        Parameters
+        ----------
+        key : str
+            The header line key (e.g. ``"INFO"``, ``"contig"``, ``"custom_key"``).
+
+        value : str, optional
+            The value for generic (unstructured) ``##custom_key=value`` header lines.
+            For structured lines such as INFO and FILTER, this must be None.
+            Either `value` or `items` must be specified, but not both.
+
+        items : list of (str, str) pairs, optional
+            A list of key/value pairs for a structured header line.
+            For example ``[("ID", "NS"), ("Type", "Number")... ]``.
+            Either ``value`` or ``items`` must be specified, but not both.
+
+        Raises
+        ------
+        ValueError
+            If `value` and `items` are both specified, or if neither is specified.
+
+        MemoryError
+            If a VCF header record cannot be allocated.
+        """
         if not ((value is not None) ^ (items is not None)):
-            raise ValueError('either value or items must be specified')
+            raise ValueError('Either value or items must be specified')
 
         cdef bcf_hrec_t *hrec = <bcf_hrec_t*>calloc(1, sizeof(bcf_hrec_t))
         cdef int quoted
@@ -2237,15 +2549,21 @@ cdef class VariantHeader(object):
                 raise MemoryError('unable to reallocate VariantHeader')
 
     def add_sample(self, name):
-        """Add a new sample to this header"""
+        """Add a new sample to this header.
+
+        Parameters
+        ----------
+        name : str
+            The sample name to add.
+        """
         self._add_sample(name)
         self._hdr_sync()
 
     def add_samples(self, *args):
         """Add several new samples to this header.
-        This function takes multiple arguments, each of which may
-        be either a sample name or an iterable returning sample names
-        (e.g., a list of sample names).
+
+        This function takes multiple arguments, each of which may be either a sample name or an
+        iterable returning sample names (e.g., a list of sample names).
         """
         for arg in args:
             if isinstance(arg, str):
@@ -2258,7 +2576,7 @@ cdef class VariantHeader(object):
 
 cdef VariantHeader makeVariantHeader(bcf_hdr_t *hdr):
     if not hdr:
-        raise ValueError('cannot create VariantHeader')
+        raise ValueError('Cannot create VariantHeader')
 
     cdef VariantHeader header = VariantHeader.__new__(VariantHeader)
     header.ptr = hdr
@@ -2561,7 +2879,7 @@ cdef class VariantRecordFormat(object):
                 yield bcf_str_cache_get_charptr(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
 
     def get(self, key, default=None):
-        """Retrieve :class:`VariantMetadata` for a FORMAT field ``key``.
+        """Retrieve :class:`VariantMetadata` for a FORMAT field `key`.
 
         If `key` is not present, return `default`.
 
@@ -3940,7 +4258,7 @@ cdef class BaseIndex(object):
         return iter(self.refs)
 
     def get(self, key, default=None):
-        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        """Retrieve the integer index for the reference sequence named `key`, or `default` if not present."""
         try:
             return self[key]
         except KeyError:
@@ -3955,29 +4273,29 @@ cdef class BaseIndex(object):
             return True
 
     def iterkeys(self):
-        """D.iterkeys() -> an iterator over the keys of D"""
+        """Return an iterator over the reference sequence names in this index."""
         return iter(self)
 
     def itervalues(self):
-        """D.itervalues() -> an iterator over the values of D"""
+        """Return an iterator over the integer indices of reference sequences."""
         for key in self:
             yield self[key]
 
     def iteritems(self):
-        """D.iteritems() -> an iterator over the (key, value) items of D"""
+        """Return an iterator over (reference name, integer index) pairs."""
         for key in self:
             yield (key, self[key])
 
     def keys(self):
-        """D.keys() -> list of D's keys"""
+        """Return a list of reference sequence names in this index."""
         return list(self)
 
     def items(self):
-        """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
+        """Return a list of (reference name, integer index) pairs."""
         return list(self.iteritems())
 
     def values(self):
-        """D.values() -> list of D's values"""
+        """Return a list of integer indices of reference sequences."""
         return list(self.itervalues())
 
     def update(self, items=(), **kwargs):
