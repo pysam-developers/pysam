@@ -31,6 +31,16 @@ elif test -x ${HOMEBREW_PREFIX-/usr/local}/bin/brew; then
     HOMEBREW_NO_AUTO_UPDATE=1 brew install -q samtools bcftools
     brew unlink xz || true
 
+elif test -x /usr/sbin/pkg; then
+    echo Installing prerequisites via pkg...
+    pkg update
+    pkg install -y bcftools gmake py311-cython py311-mypy py311-pytest samtools
+
+elif test -x /usr/pkg/bin/pkgin; then
+    echo Installing prerequisites via pkgin...
+    pkgin update
+    pkgin -y install bcftools gmake py314-cython py314-mypy py314-setuptools py314-test samtools
+
 else
     echo No package manager detected
 fi

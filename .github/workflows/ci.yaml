@@ -58,6 +58,40 @@ jobs:
           pytest
 
 
+  system:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: freebsd
+            version: "15.0"
+            python-version: "3.11"
+
+          - os: netbsd
+            version: "10.1"
+            python-version: "3.14"
+
+    steps:
+      - name: Checkout pysam
+        uses: actions/checkout@v6
+
+      - name: Build and test on ${{ matrix.os }}
+        uses: cross-platform-actions/action@v1
+        env:
+          MAKE: "gmake"
+          PYSAM_FIX_CFLAGS: "1"
+          python: "python${{ matrix.python-version }}"
+          pytest: "pytest-${{ matrix.python-version }}"
+        with:
+          operating_system: ${{ matrix.os }}
+          version: ${{ matrix.version }}
+          environment_variables: MAKE PYSAM_FIX_CFLAGS python pytest
+          run: |
+            sudo devtools/install-prerequisites.sh $PWD/devtools/emulate-tools.py /usr/local/bin
+            $python setup.py build
+            PYTHONPATH="$(echo $PWD/build/lib.*)" REF_PATH=":" $pytest
+
+
   sdist:
     runs-on: ${{ matrix.os }}-latest
     strategy:

@@ -112,6 +112,46 @@ def run_nm_defined_symbols(objfile):
     return symbols
 
 
+def adjust_cflags(command, incdir = "/usr/local/include"):
+    if not truthy(os.environ.get("PYSAM_FIX_CFLAGS", "1")):
+        return command, set()
+
+    # Change -I/usr/system/dir options to use -isystem, so that system-installed HTSlib headers
+    # don't override pysam's own in a shared/separate build, in which pysam's -I options come later.
+    ISYSTEM = "changed system includes to use -isystem"
+
+    # We don't use $CPPFLAGS, so if -Iincdir is listed there, ensure it also present in our options.
+    need_incdir = f"-I{incdir}" in (sysconfig.get_config_var("CPPFLAGS") or "")
+    ADDED = f"added {incdir} to search path"
+
+    adjustments = set()
+
+    if isinstance(command, str):
+        if "-I/usr/" in command:
+            command = command.replace("-I/usr/", "-isystem /usr/")
+            adjustments.add(ISYSTEM)
+
+        if need_incdir and incdir not in command:
+            command = f"{command} -isystem {incdir}"
+            adjustments.add(ADDED)
+
+    elif isinstance(command, list):
+        original_command = command
+        command = []
+        for word in original_command:
+            if word.startswith("-I/usr/"):
+                command.extend(["-isystem", word[2:]])
+                adjustments.add(ISYSTEM)
+            else:
+                command.append(word)
+
+        if need_incdir and incdir not in command and f"-I{incdir}" not in command:
+            command.extend(["-isystem", incdir])
+            adjustments.add(ADDED)
+
+    return command, adjustments
+
+
 # This function emulates the way distutils combines settings from sysconfig,
 # environment variables, and the extension being built. It returns a dictionary
 # representing the usual set of variables, suitable for writing to a generated
@@ -180,6 +220,9 @@ def set_compiler_envvars():
             value = sysconfig.get_config_var(var)
             if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
                 value += ' ' + sysconfig.get_config_var('CCSHARED')
+            if var == 'CFLAGS':
+                value, adjustments = adjust_cflags(value)
+                for adj in sorted(adjustments): print(f"# pysam: adjusted CFLAGS: {adj}")
             print(f"# pysam: (sysconfig) {var}={value}")
             os.environ[var] = value
             tmp_vars += [var]
@@ -333,6 +376,17 @@ class cy_build_ext(build_ext):
                     if isinstance(command, list):  executables[executable] = command + c99_flags
                     elif isinstance(command, str): executables[executable] = f"{command} {' '.join(c99_flags)}"
             self.compiler.set_executables(**executables)
+
+        executables = {}
+        adjustments = set()
+        for executable in ["compiler", "compiler_so"]:
+            command = getattr(self.compiler, executable, None)
+            new_command, adjs = adjust_cflags(command)
+            if new_command != command:
+                executables[executable] = new_command
+                adjustments |= adjs
+        if executables: self.compiler.set_executables(**executables)
+        for adj in sorted(adjustments): print(f"checking compiler options... {adj}")
 
         super().build_extensions()
 
