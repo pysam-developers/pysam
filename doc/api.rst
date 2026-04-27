@@ -213,28 +213,37 @@ VCF/BCF files
 .. autoclass:: pysam.VariantHeader
    :members:
 
-.. autoclass:: pysam.VariantHeaderMetadata
-   :members:
-
-.. autoclass:: pysam.VariantMetadata
-   :members:
-
-.. autoclass:: pysam.VariantHeaderRecords
-   :members:
-
-.. autoclass:: pysam.VariantHeaderRecord
-   :members:
-
-.. autoclass:: pysam.VariantHeaderContigs
+.. autoclass:: pysam.VariantRecord
    :members:
 
 .. autoclass:: pysam.VariantContig
    :members:
 
-.. autoclass:: pysam.VariantHeaderSamples
+.. autoclass:: pysam.VariantHeaderRecord
    :members:
 
-.. autoclass:: pysam.VariantRecord
+.. autoclass:: pysam.VariantMetadata
+   :members:
+
+.. autoclass:: pysam.VariantRecordSample
+   :members:
+
+Internal classes
+----------------
+
+These classes are used internally to represent particular header and record
+fields. They cannot be instantiated directly in your Python or Cython code.
+
+.. autoclass:: pysam.VariantHeaderContigs
+   :members:
+
+.. autoclass:: pysam.VariantHeaderMetadata
+   :members:
+
+.. autoclass:: pysam.VariantHeaderRecords
+   :members:
+
+.. autoclass:: pysam.VariantHeaderSamples
    :members:
 
 .. autoclass:: pysam.VariantRecordFilter
@@ -249,8 +258,6 @@ VCF/BCF files
 .. autoclass:: pysam.VariantRecordSamples
    :members:
 
-.. autoclass:: pysam.VariantRecordSample
-   :members:
 
 HTSFile
 =======
