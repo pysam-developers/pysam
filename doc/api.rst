@@ -158,52 +158,6 @@ a SAM/BAM file.
    :members:
 
 
-Tabix files
-===========
-
-:class:`~pysam.TabixFile` opens tabular files that have been
-indexed with tabix_.
-
-.. autoclass:: pysam.TabixFile
-   :members:
-
-To iterate over tabix files, use :func:`~pysam.tabix_iterator`:
-
-.. autofunction:: pysam.tabix_iterator
-
-.. autofunction:: pysam.tabix_compress
-
-.. autofunction:: pysam.tabix_index
-
-.. autoclass:: pysam.asTuple
-   :members:
-
-.. autoclass:: pysam.asVCF
-   :members:
-
-.. autoclass:: pysam.asBed
-   :members:
-
-.. autoclass:: pysam.asGTF
-   :members:
-
-
-FASTA files
-===========
-
-.. autoclass:: pysam.FastaFile
-   :members:
-
-FASTQ files
-===========
-
-.. autoclass:: pysam.FastxFile
-   :members:
-
-.. autoclass:: pysam.FastqProxy
-   :members:
-
-
 VCF/BCF files
 =============
 
@@ -256,6 +210,52 @@ fields. They cannot be instantiated directly in your Python or Cython code.
    :members:
 
 .. autoclass:: pysam.VariantRecordSamples
+   :members:
+
+
+Tabix files
+===========
+
+:class:`~pysam.TabixFile` opens tabular files that have been
+indexed with tabix_.
+
+.. autoclass:: pysam.TabixFile
+   :members:
+
+To iterate over tabix files, use :func:`~pysam.tabix_iterator`:
+
+.. autofunction:: pysam.tabix_iterator
+
+.. autofunction:: pysam.tabix_compress
+
+.. autofunction:: pysam.tabix_index
+
+.. autoclass:: pysam.asTuple
+   :members:
+
+.. autoclass:: pysam.asVCF
+   :members:
+
+.. autoclass:: pysam.asBed
+   :members:
+
+.. autoclass:: pysam.asGTF
+   :members:
+
+
+FASTA files
+===========
+
+.. autoclass:: pysam.FastaFile
+   :members:
+
+FASTQ files
+===========
+
+.. autoclass:: pysam.FastxFile
+   :members:
+
+.. autoclass:: pysam.FastqProxy
    :members:
 
 
