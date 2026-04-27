@@ -3829,28 +3829,39 @@ cdef class VariantRecord(object):
 
     @property
     def filter(self):
-        """FILTER column data (see :class:`VariantRecordFilter`) for this record."""
+        """VariantRecordFilter : The FILTER field, presented as a mapping of the filter
+        names present (or their indices) to their corresponding :class:`VariantMetadata`.
+        See :class:`VariantRecordFilter` for details.
+        """
         if bcf_unpack(self.ptr, BCF_UN_FLT) < 0:
             raise ValueError('Error unpacking VariantRecord')
         return makeVariantRecordFilter(self)
 
     @property
     def info(self):
-        """INFO column data (see :class:`VariantRecordInfo`) for this record."""
+        """VariantRecordInfo : The INFO field, presented as a mapping of the field names
+        present to their corresponding values. See :class:`VariantRecordInfo` for details.
+        """
         if bcf_unpack(self.ptr, BCF_UN_INFO) < 0:
             raise ValueError('Error unpacking VariantRecord')
         return makeVariantRecordInfo(self)
 
     @property
     def format(self):
-        """FORMAT column metadata (see :class:`VariantRecordFormat`) for this record."""
+        """VariantRecordFormat : The FORMAT field, presented as a mapping of
+        the field names present to their corresponding :class:`VariantMetadata`.
+        See :class:`VariantRecordFormat` for details.
+        """
         if bcf_unpack(self.ptr, BCF_UN_FMT) < 0:
             raise ValueError('Error unpacking VariantRecord')
         return makeVariantRecordFormat(self)
 
     @property
     def samples(self):
-        """SAMPLE column(s) data (see :class:`VariantRecordSamples`) for this record."""
+        """VariantRecordSamples : The genotype fields, presented as a mapping of the sample
+        names present (or their indices) to their corresponding :class:`VariantRecordSample`.
+        See :class:`VariantRecordSamples` for details.
+        """
         if bcf_unpack(self.ptr, BCF_UN_ALL) < 0:
             raise ValueError('Error unpacking VariantRecord')
         return makeVariantRecordSamples(self)
