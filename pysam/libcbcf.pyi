@@ -1,8 +1,8 @@
-import sys
 from typing import (
     Optional,
     Union,
     Any,
+    IO,
     Sequence,
     Tuple,
     Iterator,
@@ -321,7 +321,7 @@ class VariantFile(HTSFile):
     def header_written(self) -> bool: ...
     def __init__(
         self,
-        filename: StrOrBytesPath,
+        filename: Union[StrOrBytesPath, IO[Any]],
         mode: Optional[str] = ...,
         index_filename: Optional[str] = ...,
         header: Optional[VariantHeader] = ...,
@@ -336,7 +336,7 @@ class VariantFile(HTSFile):
     def copy(self) -> VariantFile: ...
     def open(
         self,
-        filename: StrOrBytesPath,
+        filename: Union[StrOrBytesPath, IO[Any]],
         mode: Optional[str] = ...,
         index_filename: Optional[str] = ...,
         header: Optional[VariantHeader] = ...,
