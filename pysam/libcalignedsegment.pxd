@@ -85,6 +85,7 @@ cdef class PileupColumn:
     cdef uint32_t min_base_quality
     cdef kstring_t buf
     cdef char * reference_sequence
+    cdef _check_pileup_valid(self)
 
 cdef class PileupRead:
     cdef int32_t  _qpos

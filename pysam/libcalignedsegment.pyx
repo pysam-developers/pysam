@@ -3040,11 +3040,14 @@ cdef class PileupColumn:
         def __get__(self):
             return self.pos
 
+    cdef _check_pileup_valid(self):
+        if self.plp == NULL or self.plp[0] == NULL:
+            raise ValueError("PileupColumn accessed after iterator finished")
+
     property pileups:
         '''list of reads (:class:`pysam.PileupRead`) aligned to this column'''
         def __get__(self):
-            if self.plp == NULL or self.plp[0] == NULL:
-                raise ValueError("PileupColumn accessed after iterator finished")
+            self._check_pileup_valid()
 
             cdef int x
             cdef const bam_pileup1_t * p = NULL
@@ -3096,12 +3099,11 @@ cdef class PileupColumn:
         :meth:`get_mapping_qualities`, etc.
 
         """
+        self._check_pileup_valid()
         cdef uint32_t x = 0
         cdef uint32_t c = 0
         cdef uint32_t cnt = 0
         cdef const bam_pileup1_t * p = NULL
-        if self.plp == NULL or self.plp[0] == NULL:
-            raise ValueError("PileupColumn accessed after iterator finished")
 
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
@@ -3169,6 +3171,7 @@ cdef class PileupColumn:
         a list of bases/sequences per read at pileup column position. : list
 
         """
+        self._check_pileup_valid()
         cdef uint32_t x = 0
         cdef uint32_t j = 0
         cdef uint32_t c = 0
@@ -3176,9 +3179,6 @@ cdef class PileupColumn:
         cdef uint8_t rb = 0
         cdef kstring_t * buf = &self.buf
         cdef const bam_pileup1_t * p = NULL
-
-        if self.plp == NULL or self.plp[0] == NULL:
-            raise ValueError("PileupColumn accessed after iterator finished")
 
         buf.l = 0
 
@@ -3257,6 +3257,7 @@ cdef class PileupColumn:
 
         a list of quality scores : list
         """
+        self._check_pileup_valid()
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
         cdef uint32_t c = 0
@@ -3285,9 +3286,7 @@ cdef class PileupColumn:
 
         a list of quality scores : list
         """
-        if self.plp == NULL or self.plp[0] == NULL:
-            raise ValueError("PileupColumn accessed after iterator finished")
-
+        self._check_pileup_valid()
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
         result = []
@@ -3311,9 +3310,7 @@ cdef class PileupColumn:
 
         a list of read positions : list
         """
-        if self.plp == NULL or self.plp[0] == NULL:
-            raise ValueError("PileupColumn accessed after iterator finished")
-
+        self._check_pileup_valid()
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
         result = []
@@ -3337,9 +3334,7 @@ cdef class PileupColumn:
 
         a list of query names at pileup column position. : list
         """
-        if self.plp == NULL or self.plp[0] == NULL:
-            raise ValueError("PileupColumn accessed after iterator finished")
-
+        self._check_pileup_valid()
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
         result = []
