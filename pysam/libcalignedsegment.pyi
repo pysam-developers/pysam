@@ -1,6 +1,5 @@
 import enum
 import re
-import sys
 from array import array
 from typing import Any, List, Literal, Optional, Dict, Tuple, Union, overload
 

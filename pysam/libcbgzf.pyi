@@ -1,5 +1,3 @@
-import sys
-
 from typing import Literal, Optional, Union, Any, NoReturn
 
 BUFFER_SIZE: int

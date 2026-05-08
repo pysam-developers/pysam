@@ -1,5 +1,4 @@
 import os
-import sys
 from typing import List, Union, NoReturn, Iterable, Any, Tuple, Optional, Protocol, TypeVar
 
 class HasFileno(Protocol):

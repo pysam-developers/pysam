@@ -1,4 +1,3 @@
-import sys
 from typing import Optional, List, Literal, Any
 
 from pysam.libchtslib import HTSFile

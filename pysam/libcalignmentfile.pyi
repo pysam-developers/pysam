@@ -1,7 +1,5 @@
 import array
-import sys
 from typing import (
-    Any,
     Dict,
     Type,
     NamedTuple,
