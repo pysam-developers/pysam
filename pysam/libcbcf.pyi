@@ -14,7 +14,7 @@ from typing import (
     Generic,
 )
 
-from pysam.libchtslib import HTSFile, StrOrBytesPath
+from pysam.libchtslib import HTSFile, StrOrBytesPathOrFileDescriptorLike
 
 _D = TypeVar("_D")
 _K = TypeVar("_K", str, Union[int, str])
@@ -320,7 +320,7 @@ class VariantFile(HTSFile):
     def header_written(self) -> bool: ...
     def __init__(
         self,
-        filename: StrOrBytesPath,
+        filename: StrOrBytesPathOrFileDescriptorLike,
         mode: Optional[str] = ...,
         index_filename: Optional[str] = ...,
         header: Optional[VariantHeader] = ...,
@@ -335,7 +335,7 @@ class VariantFile(HTSFile):
     def copy(self) -> VariantFile: ...
     def open(
         self,
-        filename: StrOrBytesPath,
+        filename: StrOrBytesPathOrFileDescriptorLike,
         mode: Optional[str] = ...,
         index_filename: Optional[str] = ...,
         header: Optional[VariantHeader] = ...,

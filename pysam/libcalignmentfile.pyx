@@ -866,7 +866,7 @@ cdef class AlignmentFile(HTSFile):
             self.is_stream = True
         # reading from a File object or other object with fileno
         elif hasattr(filepath_or_object, "fileno"):
-            if filepath_or_object.closed:
+            if hasattr(filepath_or_object, "closed") and filepath_or_object.closed:
                 raise ValueError('I/O operation on closed file')
             self.filename = filepath_or_object
             # .name can be TextIOWrapper

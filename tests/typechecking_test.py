@@ -1,5 +1,6 @@
 import inspect
 import os
+import pathlib
 import pytest
 import re
 from typing import TYPE_CHECKING
@@ -8,7 +9,7 @@ import pysam
 import pysam.samtools
 import pysam.bcftools
 
-from TestUtils import BAM_DATADIR, make_data_files
+from TestUtils import BAM_DATADIR, CBCF_DATADIR, make_data_files
 
 try:
     import mypy.api
@@ -16,6 +17,8 @@ except ImportError:
     pytest.skip('mypy API not available', allow_module_level=True)
 
 PREAMBLE = """
+import os
+import pathlib
 import re
 from typing import TYPE_CHECKING
 
@@ -91,6 +94,12 @@ def bam_fname():
     return os.path.join(BAM_DATADIR, 'ex1.bam')
 
 
+@pytest.fixture
+def vcf_fname():
+    # This file is a committed source file, so we don't need to make_data_files() here
+    return os.path.join(CBCF_DATADIR, 'example_vcf43.vcf')
+
+
 def test_AlignedSegment_is_mapped(aln: pysam.AlignedSegment) -> None:
     rmap = aln.is_mapped
     mmap = aln.mate_is_mapped
@@ -136,3 +145,47 @@ def test_samtools_subcommands() -> None:
     types = typecheck()
     for var, vartype in types.items():
         assert vartype.endswith('PysamDispatcher'), f'{var!r} is not a dispatcher'
+
+def test_AlignmentFile_filenames(sam_fname: str) -> None:
+    fp1 = pysam.AlignmentFile(sam_fname)
+    fp2 = pysam.AlignmentFile(sam_fname.encode())
+    fp3 = pysam.AlignmentFile(pathlib.Path(sam_fname))
+
+    fd = os.open(sam_fname, os.O_RDONLY)
+    fp4 = pysam.AlignmentFile(fd)
+    os.close(fd)
+
+    class WrappedFd:
+        def __init__(self, fname): self.fd = os.open(fname, os.O_RDONLY)
+        def fileno(self): return self.fd
+        def __del__(self): os.close(self.fd)
+
+    fp5 = pysam.AlignmentFile(WrappedFd(sam_fname))
+
+    fio = open(sam_fname)
+    fp6 = pysam.AlignmentFile(fio)
+
+    if TYPE_CHECKING: reveal_locals()
+    types = typecheck()
+
+def test_VariantFile_filenames(vcf_fname: str) -> None:
+    fp1 = pysam.VariantFile(vcf_fname)
+    fp2 = pysam.VariantFile(vcf_fname.encode())
+    fp3 = pysam.VariantFile(pathlib.Path(vcf_fname))
+
+    fd = os.open(vcf_fname, os.O_RDONLY)
+    fp4 = pysam.VariantFile(fd)
+    os.close(fd)
+
+    class WrappedFd:
+        def __init__(self, fname): self.fd = os.open(fname, os.O_RDONLY)
+        def fileno(self): return self.fd
+        def __del__(self): os.close(self.fd)
+
+    fp5 = pysam.VariantFile(WrappedFd(vcf_fname))
+
+    fio = open(vcf_fname)
+    fp6 = pysam.VariantFile(fio)
+
+    if TYPE_CHECKING: reveal_locals()
+    types = typecheck()
