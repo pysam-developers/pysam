@@ -10,7 +10,7 @@
 from posix.unistd cimport dup
 from libc.errno  cimport errno
 from libc.stdint cimport INT32_MAX
-from cpython cimport PyBytes_FromStringAndSize
+from cpython.bytes cimport PyBytes_FromStringAndSize
 from pysam.libchtslib cimport *
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
 from pysam.libcutils cimport encode_filename, from_string_and_size, libc_whence_from_io

@@ -13,8 +13,7 @@ from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 from libc.stdio  cimport SEEK_SET
 from libc.stdlib cimport malloc, calloc, realloc, free
 
-from cpython.object cimport PyObject
-from cpython.bytes  cimport PyBytes_FromStringAndSize, _PyBytes_Resize
+from cpython.bytes cimport PyBytes_FromStringAndSize
 
 from pysam.libcutils   cimport force_bytes, encode_filename
 from pysam.libchtslib  cimport bgzf_open, bgzf_index_build_init, bgzf_write, bgzf_read, \

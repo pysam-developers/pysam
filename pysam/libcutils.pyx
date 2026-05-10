@@ -9,8 +9,9 @@ import io
 from contextlib import contextmanager
 from codecs import register_error
 
+from cpython.bytes cimport PyBytes_Check
+from cpython.unicode cimport PyUnicode_Check
 from cpython.version cimport PY_MAJOR_VERSION, PY_MINOR_VERSION
-from cpython cimport PyBytes_Check, PyUnicode_Check
 from cpython cimport array as c_array
 from libc.errno cimport errno
 from libc.stdlib cimport calloc, free

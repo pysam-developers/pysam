@@ -55,11 +55,6 @@ from libc.string cimport strerror
 
 from cpython cimport array
 
-from cpython cimport PyErr_SetString, \
-    PyBytes_Check, \
-    PyUnicode_Check, \
-    PyBytes_FromStringAndSize
-
 from pysam.libchtslib cimport \
     faidx_nseq, fai_load, fai_load3, fai_destroy, fai_fetch, \
     faidx_seq_len, faidx_iseq, faidx_seq_len, \

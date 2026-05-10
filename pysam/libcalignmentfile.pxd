@@ -9,7 +9,6 @@ from pysam.libcfaidx cimport faidx_t, FastaFile
 from pysam.libcalignedsegment cimport AlignedSegment
 from pysam.libchtslib cimport *
 
-from cpython cimport array
 cimport cython
 
 cdef extern from *:

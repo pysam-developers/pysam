@@ -61,9 +61,7 @@ from libc.string cimport strerror
 from libc.errno cimport errno
 from posix.unistd cimport dup
 
-from cpython cimport PyErr_SetString, PyBytes_Check, \
-    PyUnicode_Check, PyBytes_FromStringAndSize, \
-    PyObject_AsFileDescriptor
+from cpython.object cimport PyObject_AsFileDescriptor
 
 cimport pysam.libctabixproxies as ctabixproxies
 

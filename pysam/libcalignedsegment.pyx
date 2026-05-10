@@ -62,7 +62,7 @@ import struct
 
 cimport cython
 from cpython cimport array as c_array
-from cpython cimport PyBytes_FromStringAndSize
+from cpython.bytes cimport PyBytes_FromStringAndSize
 from libc.string cimport memset, strchr
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \

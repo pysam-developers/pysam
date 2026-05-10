@@ -12,10 +12,6 @@ import collections
 import re
 import platform
 import warnings
-from cpython cimport PyErr_SetString, \
-    PyBytes_Check, \
-    PyUnicode_Check, \
-    PyBytes_FromStringAndSize
 
 from pysam.libcalignmentfile cimport AlignmentFile, AlignedSegment
 
