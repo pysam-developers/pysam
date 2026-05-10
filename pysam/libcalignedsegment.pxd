@@ -12,6 +12,8 @@ cdef extern from "htslib_util.h":
     # now: static
     int aux_type2size(int)
 
+    const char pysam_seq_comp_table[256]
+
     char * pysam_bam_get_qname(bam1_t * b)
     uint32_t * pysam_bam_get_cigar(bam1_t * b)
     uint8_t * pysam_bam_get_seq(bam1_t * b)

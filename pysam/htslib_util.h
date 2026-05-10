@@ -45,6 +45,8 @@ unsigned char pysam_translate_sequence(const unsigned char s);
 // return byte size of type
 int aux_type2size(uint8_t type);
 
+// ASCII table of base complement characters
+extern const char pysam_seq_comp_table[256];
 
 //-------------------------------------------------------
 // Wrapping accessor macros in sam.h

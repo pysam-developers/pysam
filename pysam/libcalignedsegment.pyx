@@ -62,14 +62,17 @@ import struct
 
 cimport cython
 from cpython cimport array as c_array
+from cpython.bytearray cimport PyByteArray_FromStringAndSize, PyByteArray_GET_SIZE
 from cpython.bytes cimport PyBytes_FromStringAndSize
+from cpython.unicode cimport PyUnicode_DATA, PyUnicode_1BYTE_DATA, PyUnicode_1BYTE_KIND, \
+    PyUnicode_GET_LENGTH, PyUnicode_KIND, PyUnicode_WRITE
 from libc.string cimport memset, strchr
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
 
 from pysam.libchtslib cimport HTS_IDX_NOCOOR
-from pysam.libcutils cimport force_bytes, force_str, \
+from pysam.libcutils cimport PysamUnicode_NewCloneWithSize, force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
 
 # Constants for binary tag conversion
@@ -131,6 +134,82 @@ cdef inline bint pileup_base_qual_skip(const bam_pileup1_t * p, uint32_t thresho
     if c < threshold:
         return True
     return False
+
+
+cdef inline str revcomp_1byte_str(str destseq, str seq, size_t n):
+    cdef const unsigned char *src = PyUnicode_1BYTE_DATA(seq)
+    cdef unsigned char *dest = PyUnicode_1BYTE_DATA(destseq)
+    dest += n
+
+    for _ in range(n):
+        dest -= 1
+        dest[0] = pysam_seq_comp_table[src[0]]
+        src += 1
+
+    return destseq
+
+cdef inline str revcomp_str(str destseq, str seq, size_t n):
+    cdef unsigned int kind = PyUnicode_KIND(destseq)
+    cdef void *dest = PyUnicode_DATA(destseq)
+
+    cdef size_t i = n
+    for b in seq:
+        i -= 1
+        PyUnicode_WRITE(kind, dest, i, pysam_seq_comp_table[b] if b < 256 else b)
+
+    return destseq
+
+cdef inline int revcomp_int(int b):
+    return (b & 1) << 3 | (b & 2) << 1 | (b & 4) >> 1 | (b & 8) >> 3
+
+cdef inline object revcomp_bytes(object destseq, const unsigned char[:] seq_view):
+    cdef size_t n = seq_view.shape[0]
+    cdef unsigned char *dest = destseq
+
+    cdef size_t i, max_idx = n - 1
+    for i in range(n):
+        dest[max_idx - i] = pysam_seq_comp_table[seq_view[i]]
+
+    return destseq
+
+def reverse_complement(seq):
+    """Return a new string containing the reverse complement of the sequence
+    of bases in `seq`. The sequence may include N, X, and IUPAC ambiguity codes.
+    Both T and U are complemented as A. Other characters that do not represent
+    nucleotides should not be present, but if they are they are left unchanged.
+
+    Parameters
+    ----------
+    seq : str or bytearray or bytes or int
+        The sequence to be reverse complemented. When `seq` is :class:`int`,
+        it is considered to be a single base represented in the 4-bit 0--15
+        encoding used by :term:`BAM`'s SEQ field.
+
+    Returns
+    -------
+    The same type as `seq`.
+    """
+    cdef size_t length
+
+    if isinstance(seq, str):
+        length = PyUnicode_GET_LENGTH(seq)
+        revcomp = PysamUnicode_NewCloneWithSize(seq, length)
+        if PyUnicode_KIND(revcomp) == PyUnicode_1BYTE_KIND:
+            return revcomp_1byte_str(revcomp, seq, length)
+        else:
+            return revcomp_str(revcomp, seq, length)
+
+    elif isinstance(seq, int):
+        return revcomp_int(seq)
+
+    elif isinstance(seq, bytearray):
+        return revcomp_bytes(PyByteArray_FromStringAndSize(NULL, PyByteArray_GET_SIZE(seq)), seq)
+
+    else:
+        try:
+            return revcomp_bytes(PyBytes_FromStringAndSize(NULL, len(seq)), seq)
+        except TypeError:
+            raise TypeError("Can only reverse complement str, bytes-like, or int") from None
 
 
 cdef inline char map_typecode_htslib_to_python(uint8_t s):
@@ -2069,10 +2148,7 @@ cdef class AlignedSegment:
         """
         if self.query_sequence is None:
             return None
-        s = force_str(self.query_sequence)
-        if self.is_reverse:
-            s = s.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
-        return s
+        return reverse_complement(self.query_sequence) if self.is_reverse else self.query_sequence
 
     def get_forward_qualities(self):
         """return the original base qualities of the read sequence,
@@ -3513,4 +3589,6 @@ __all__ = [
     "FQCFAIL",
     "FDUP",
     "FSUPPLEMENTARY",
-    "KEY_NAMES"]
+    "KEY_NAMES",
+    "reverse_complement",
+]

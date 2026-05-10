@@ -28,3 +28,10 @@ def test_read_binary_tag(benchmark):
     result = benchmark(read_binary_tag, os.path.join(
         BAM_DATADIR, "example_btag.bam"))
     assert result == 260
+
+
+def test_reverse_complement(pytestconfig, benchmark):
+    count = int(os.environ.get("LEN", 300)) // 5
+    if pytestconfig.get_verbosity() > 0: print(f"LEN={5 * count} ", end="", flush=True)
+    result = benchmark(pysam.reverse_complement, "AATGC" * count)
+    assert result == "GCATT" * count

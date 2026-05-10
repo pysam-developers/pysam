@@ -1,5 +1,6 @@
 import os
 import pysam
+import pytest
 import unittest
 import json
 import collections
@@ -1833,6 +1834,17 @@ class TestForwardStrandValues(ReadTest):
         self.assertEqual(fwd_seq, a.query_sequence)
         self.assertEqual(rev_seq, a.get_forward_sequence())
 
+    def test_ambiguous_bases_are_complemented(self):
+        a = self.build_read()
+        ambiguity = "ABCDGHKMNRSTVWY"
+        reviguity = "TVGHCDMKNYSABWR"[::-1]
+
+        a.query_sequence = ambiguity
+        a.is_reverse = False
+        self.assertEqual(ambiguity, a.get_forward_sequence())
+        a.is_reverse = True
+        self.assertEqual(reviguity, a.get_forward_sequence())
+
     def test_qualities_are_complemented(self):
         a = self.build_read()
         a.is_reverse = False
@@ -1921,6 +1933,35 @@ class TestArrayUtilities(unittest.TestCase):
         qual_array = array.array('l', [64, 65, 66, 67, 68])
         with self.assertRaises(ValueError):
             pysam.array_to_qualitystring(qual_array)
+
+
+@pytest.mark.parametrize("seq,revcomp", [
+    ("", ""),
+    ("A", "T"),
+    ("gC", "Gc"),
+    ("AAT", "ATT"),
+    ("ACGT", "ACGT"),
+    ("AATCG", "CGATT"),
+    ("aATGGC", "GCCATt"),
+    pytest.param("ABCDGHKMNRSTVWY-NNN-abcdghkmnrstvwy--AAASW",
+                 "TVGHCDMKNYSABWR-NNN-tvghcdmknysabwr--TTTSW"[::-1], id="iupac")
+])
+def test_reverse_complement(seq, revcomp):
+    assert isinstance(seq, str)
+    assert pysam.reverse_complement(seq) == revcomp
+
+    seq_4byte_kind = f"→{seq}𐘂"
+    assert isinstance(seq_4byte_kind, str)
+    assert pysam.reverse_complement(seq_4byte_kind) == f"𐘂{revcomp}→"
+
+    seq_bytes = seq.encode("ascii")
+    revcomp_bytes = revcomp.encode("ascii")
+    assert isinstance(seq_bytes, bytes)
+    assert pysam.reverse_complement(seq_bytes) == revcomp_bytes
+
+    seq_ba = bytearray(seq_bytes)
+    assert isinstance(seq_ba, bytearray)
+    assert pysam.reverse_complement(seq_ba) == revcomp_bytes
 
 
 if __name__ == "__main__":

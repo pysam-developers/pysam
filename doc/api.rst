@@ -157,6 +157,8 @@ a SAM/BAM file.
 .. autoclass:: pysam.IndexedReads
    :members:
 
+.. autofunction:: pysam.reverse_complement
+
 
 VCF/BCF files
 =============
