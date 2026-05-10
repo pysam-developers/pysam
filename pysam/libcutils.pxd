@@ -25,6 +25,10 @@ cpdef qualities_to_qualitystring(qualities, int offset=*)
 cpdef get_encoding_error_handler()
 cpdef set_encoding_error_handler(name)
 
+# Raw unicode string utility functions
+cdef str PysamUnicode_NewClone(str s)
+cdef str PysamUnicode_NewCloneWithSize(str s, size_t length)
+
 ########################################################################
 ## Python 3 compatibility functions
 ########################################################################

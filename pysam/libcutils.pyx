@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from codecs import register_error
 
 from cpython.bytes cimport PyBytes_Check
-from cpython.unicode cimport PyUnicode_Check
+from cpython.unicode cimport PyUnicode_Check, PyUnicode_GET_LENGTH, PyUnicode_New
 from cpython.version cimport PY_MAJOR_VERSION, PY_MINOR_VERSION
 from cpython cimport array as c_array
 from libc.errno cimport errno
@@ -109,6 +109,22 @@ cpdef set_encoding_error_handler(name):
     previous = ERROR_HANDLER
     ERROR_HANDLER = name
     return previous
+
+########################################################################
+## Raw unicode string utility functions
+########################################################################
+
+cdef extern from *:
+    # Declarations not provided by current Cython
+    Py_UCS4 PyUnicode_MAX_CHAR_VALUE(object o)
+
+cdef str PysamUnicode_NewClone(str s):
+    """Return a new uninitialised string with the same kind and length."""
+    return PyUnicode_New(PyUnicode_GET_LENGTH(s), PyUnicode_MAX_CHAR_VALUE(s))
+
+cdef str PysamUnicode_NewCloneWithSize(str s, size_t length):
+    """Return a new uninitialised string with the same kind and the specified length."""
+    return PyUnicode_New(length, PyUnicode_MAX_CHAR_VALUE(s))
 
 ########################################################################
 ## Python 3 compatibility functions
