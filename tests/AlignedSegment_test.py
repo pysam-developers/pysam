@@ -1540,7 +1540,7 @@ class TestTags(ReadTest):
         a.query_sequence = "A" * 9
         self.assertEqual("AAAAcTTAA", a.get_reference_sequence())
 
-    def testArrayTags(self):
+    def testArrayTagValues(self):
 
         r = self.build_read()
 
@@ -1854,13 +1854,13 @@ class TestExportImport(ReadTest):
             "ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC\t1234123412341234123412341234123412341234",
         )
 
-    def test_string_export_import_without_tags(self):
+    def test_string_export_import_str_without_tags(self):
         a = self.build_read()
         a.tags = []
         b = pysam.AlignedSegment.fromstring(a.to_string(), a.header)
         self.assertEqual(a, b)
 
-    def test_string_export_import_with_tags(self):
+    def test_string_export_import_str_with_tags(self):
         a = self.build_read()
         a.tags = [("XD", 12), ("RF", "abc")]
         b = pysam.AlignedSegment.fromstring(a.to_string(), a.header)
@@ -1889,13 +1889,13 @@ class TestExportImport(ReadTest):
             ),
         )
 
-    def test_string_export_import_without_tags(self):
+    def test_string_export_import_dict_without_tags(self):
         a = self.build_read()
         a.tags = []
         b = pysam.AlignedSegment.from_dict(a.to_dict(), a.header)
         self.assertEqual(a, b)
 
-    def test_string_export_import_with_tags(self):
+    def test_string_export_import_dict_with_tags(self):
         a = self.build_read()
         a.tags = [("XD", 12), ("RF", "abc")]
         b = pysam.AlignedSegment.from_dict(a.to_dict(), a.header)
