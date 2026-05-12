@@ -1,5 +1,6 @@
 import os
 import pysam
+import pytest
 import unittest
 import json
 import collections
@@ -1901,26 +1902,23 @@ class TestExportImport(ReadTest):
         self.assertEqual(a, b)
 
 
-class TestArrayUtilities(unittest.TestCase):
-    def test_array_to_qualstr(self):
-        data = [
-            "",
-            "Q",
-            """!"#$%&'()*+,-./012...xyz{|}~""",
-            ">>?AB",
-            "ABDDEFGHIJabcdefghij",
-            "ACAFFGGFFFJDFJHHJIJIHKGGHKHHIJHHHJ7123" * 50,
-        ]
+@pytest.mark.parametrize("qual", [
+    "",
+    "Q",
+    pytest.param("""!"#$%&'()*+,-./012...xyz{|}~""", id="linenoise"),
+    ">>?AB",
+    "ABDDEFGHIJabcdefghij",
+    pytest.param("ACAFFGGFFFJDFJHHJIJIHKGGHKHHIJHHHJ7123" * 50, id="long1"),
+])
+def test_array_to_qualstr(qual):
+    qual_array = pysam.qualitystring_to_array(qual)
+    result = pysam.array_to_qualitystring(qual_array)
+    assert result == qual
 
-        for qual in data:
-            qual_array = pysam.qualitystring_to_array(qual)
-            result = pysam.array_to_qualitystring(qual_array)
-            self.assertEqual(result, qual)
-
-    def test_longarray_to_qualstr(self):
-        qual_array = array.array('l', [64, 65, 66, 67, 68])
-        with self.assertRaises(ValueError):
-            pysam.array_to_qualitystring(qual_array)
+def test_longarray_to_qualstr():
+    qual_array = array.array('l', [64, 65, 66, 67, 68])
+    with pytest.raises(ValueError):
+        pysam.array_to_qualitystring(qual_array)
 
 
 if __name__ == "__main__":
