@@ -57,6 +57,24 @@ jobs:
           export REF_PATH=':'
           pytest
 
+      - name: Install documentation prerequisites
+        id:   doc_prereqs
+        if:   runner.os == 'linux' && matrix.python-version == '3.14'
+        run:  pip install sphinx sphinx-rtd-theme
+
+      - name: Build documentation (on selected configurations)
+        id:   doc_build
+        if:   steps.doc_prereqs.outcome == 'success'
+        run:  make -C doc html
+
+      - name: Upload documentation artifact
+        if:   steps.doc_build.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: htmldocs
+          path: doc/_build/html
+          retention-days: 7
+
 
   system:
     runs-on: ubuntu-latest
