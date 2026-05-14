@@ -211,6 +211,32 @@ def reverse_complement(seq):
         except TypeError:
             raise TypeError("Can only reverse complement str, bytes-like, or int") from None
 
+cdef inline void revcomp_bytearray_inplace(unsigned char[:] seq_view):
+    cdef size_t i = 0, j = seq_view.shape[0]
+    cdef unsigned char tmp
+
+    while i < j:
+        j -= 1
+        tmp = pysam_seq_comp_table[seq_view[i]]
+        seq_view[i] = pysam_seq_comp_table[seq_view[j]]
+        seq_view[j] = tmp
+        i += 1
+
+def reverse_complement_inplace(seq):
+    """Update `seq` by reverse complementing its sequence of bases, which may
+    include N, X, and IUPAC ambiguity codes. Both T and U are complemented
+    as A.
+
+    Parameters
+    ----------
+    seq : bytearray
+        The sequence to be reverse complemented in place.
+    """
+    if isinstance(seq, bytearray):
+        revcomp_bytearray_inplace(seq)
+    else:
+        raise TypeError("Can only reverse complement bytearray in place")
+
 
 cdef inline char map_typecode_htslib_to_python(uint8_t s):
     """map an htslib typecode to the corresponding python typecode
@@ -3591,4 +3617,5 @@ __all__ = [
     "FSUPPLEMENTARY",
     "KEY_NAMES",
     "reverse_complement",
+    "reverse_complement_inplace",
 ]

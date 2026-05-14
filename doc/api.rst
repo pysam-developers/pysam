@@ -159,6 +159,8 @@ a SAM/BAM file.
 
 .. autofunction:: pysam.reverse_complement
 
+.. autofunction:: pysam.reverse_complement_inplace
+
 
 VCF/BCF files
 =============

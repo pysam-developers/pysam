@@ -1963,6 +1963,9 @@ def test_reverse_complement(seq, revcomp):
     assert isinstance(seq_ba, bytearray)
     assert pysam.reverse_complement(seq_ba) == revcomp_bytes
 
+    pysam.reverse_complement_inplace(seq_ba)
+    assert seq_ba == revcomp_bytes
+
 
 if __name__ == "__main__":
     unittest.main()
