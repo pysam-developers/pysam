@@ -53,9 +53,7 @@ jobs:
 
       - name: Run tests
         run: |
-          export PYTHONPATH=$(echo $GITHUB_WORKSPACE/build/lib.*)
-          export REF_PATH=':'
-          pytest
+          PYTHONPATH=$(echo $GITHUB_WORKSPACE/build/lib.*) pytest
 
       - name: Install documentation prerequisites
         id:   doc_prereqs
@@ -117,7 +115,7 @@ jobs:
         run:  $python setup.py build
 
       - name: Run tests
-        run:  PYTHONPATH="$(echo $PWD/build/lib.*)" REF_PATH=":" $pytest
+        run:  PYTHONPATH="$(echo $PWD/build/lib.*)" $pytest
 
 
   sdist:
@@ -164,7 +162,7 @@ jobs:
           esac
 
       - name: Run tests
-        run:  REF_PATH=':' pytest
+        run:  pytest
 
       - name: Upload sdist tarball
         if:   runner.os == 'Linux'
@@ -208,4 +206,4 @@ jobs:
         run:  conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest
 
       - name: Run tests
-        run:  REF_PATH=':' pytest
+        run:  pytest
