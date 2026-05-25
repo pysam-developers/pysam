@@ -1437,6 +1437,22 @@ class TestTags(ReadTest):
             after = entry.get_tags()
             self.assertEqual(after, before)
 
+    def testMDTagMissing(self):
+        a = self.build_read()
+        with pytest.raises(ValueError): a.get_reference_sequence()
+
+    def testMDTagMissingCigar(self):
+        a = self.build_read()
+        a.set_tag("MD", "5")
+        a.cigartuples = None
+        with pytest.raises(ValueError): a.get_reference_sequence()
+
+    def testMDTagMissingSeq(self):
+        a = self.build_read()
+        a.set_tag("MD", "5")
+        a.query_sequence = None
+        with pytest.raises(ValueError): a.get_reference_sequence()
+
     def testMDTagMatchOnly(self):
         a = self.build_read()
 

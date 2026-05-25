@@ -666,6 +666,8 @@ cdef AlignedSegment makeAlignedSegment(bam1_t *src,
     # note that the following does not call __init__
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
+    if dest._delegate == NULL:
+        raise MemoryError("Could not allocate memory for AlignedSegment")
     dest.header = header
     dest.cache = _AlignedSegment_Cache()
     return dest
@@ -759,7 +761,6 @@ cdef inline uint32_t get_md_reference_length(char * md_tag):
     l += nmatches
     return l
 
-# TODO: avoid string copying for getSequenceInRange, reconstituneSequenceFromMD, ...
 cdef inline bytes build_alignment_sequence(bam1_t * src):
     """return expanded sequence from MD tag.
 
@@ -776,30 +777,20 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
        Deletion from the reference:    cigar=5M1D5M    MD=5^C5
        Skipped region from reference:  cigar=5M1N5M    MD=10
        Padded region in the reference: cigar=5M1P5M    MD=10
-
-    Returns
-    -------
-
-    None, if no MD tag is present.
-
     """
-    if src == NULL:
-        return None
-
     cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")
     if md_tag_ptr == NULL:
-        return None
+        raise ValueError("MD tag not present")
 
-    cdef uint32_t start = getQueryStart(src)
-    cdef uint32_t end = getQueryEnd(src)
-    # get read sequence, taking into account soft-clipping
-    r = getSequenceInRange(src, start, end)
-    cdef char * read_sequence = r
+    if src.core.l_qseq == 0:
+        raise ValueError("SEQ field not present")
+    if src.core.n_cigar == 0:
+        raise ValueError("CIGAR field not present")
+
+    cdef const uint8_t *seq_p = bam_get_seq(src)
     cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
-    if cigar_p == NULL:
-        return None
 
-    cdef uint32_t r_idx = 0
+    cdef uint32_t r_idx = getQueryStart(src)  # take soft-clipping into account
     cdef int op
     cdef uint32_t k, i, l, x
     cdef int nmatches = 0
@@ -819,7 +810,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         l = cigar_p[k] >> BAM_CIGAR_SHIFT
         if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
             for i from 0 <= i < l:
-                s[s_idx] = read_sequence[r_idx]
+                s[s_idx] = seq_nt16_str[bam_seqi(seq_p, r_idx)]
                 r_idx += 1
                 s_idx += 1
         elif op == BAM_CDEL:
@@ -831,7 +822,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         elif op == BAM_CINS or op == BAM_CPAD:
             for i from 0 <= i < l:
                 # encode insertions into reference as lowercase
-                s[s_idx] = read_sequence[r_idx] + 32
+                s[s_idx] = seq_nt16_str[bam_seqi(seq_p, r_idx)] + 32
                 r_idx += 1
                 s_idx += 1
         elif op == BAM_CSOFT_CLIP:
@@ -928,15 +919,12 @@ cdef inline bytes build_reference_sequence(bam1_t * src):
     """return the reference sequence in the region that is covered by the
     alignment of the read to the reference.
 
-    This method requires the MD tag to be set.
-
+    This method requires the SEQ and CIGAR fields and the MD tag to be present.
     """
     cdef uint32_t k, i, l
     cdef int op
     cdef int s_idx = 0
     ref_seq = build_alignment_sequence(src)
-    if ref_seq is None:
-        raise ValueError("MD tag not present")
 
     cdef char * s = <char*>calloc(len(ref_seq) + 1, sizeof(char))
     if s == NULL:
@@ -1048,7 +1036,7 @@ cdef class AlignedSegment:
         # see bam_init1
         self._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
         if self._delegate == NULL:
-            raise MemoryError("could not allocated memory of {} bytes".format(sizeof(bam1_t)))
+            raise MemoryError("Could not allocate memory for AlignedSegment")
         # allocate some memory. If size is 0, calloc does not return a
         # pointer that can be passed to free() so allocate 40 bytes
         # for a new read
@@ -1214,6 +1202,8 @@ cdef class AlignedSegment:
         """
         cdef AlignedSegment dest = cls.__new__(cls)
         dest._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
+        if dest._delegate == NULL:
+            raise MemoryError("Could not allocate memory for AlignedSegment")
         dest.header = header
         dest.cache = _AlignedSegment_Cache()
 
