@@ -1951,6 +1951,35 @@ class TestArrayUtilities(unittest.TestCase):
             pysam.array_to_qualitystring(qual_array)
 
 
+@pytest.mark.parametrize("seq", [
+    "A",
+    "AT",
+    "GCA",
+    "ATGC",
+    "AATTG",
+    pytest.param("ABCDGHKMNRSTVWY", id="iupac"),
+])
+def test_sequence_unpacking(seq):
+    a = pysam.AlignedSegment()
+    a.query_sequence = seq
+    assert a.query_sequence == seq
+
+
+@pytest.mark.parametrize("start,stop", [
+    (0, 0), (1, 0), (2, 0), (3, 0),
+    (0, 1), (1, 1), (2, 1), (3, 1),
+    (0, 2), (1, 2), (2, 2), (3, 2),
+    (0, 3), (1, 3), (2, 3), (3, 3),
+])
+def test_subsequence_unpacking(start, stop):
+    a = pysam.AlignedSegment()
+    a.query_sequence = "ABCDGHKMNRSTVWY"
+    start_clip = f"{start}S" if start > 0 else ""
+    stop_clip = f"{stop}S" if stop > 0 else ""
+    a.cigarstring = f"{start_clip}{a.query_length - start - stop}M{stop_clip}"
+    assert a.query_alignment_sequence == a.query_sequence[start : a.query_length - stop]
+
+
 @pytest.mark.parametrize("seq,revcomp", [
     ("", ""),
     ("A", "T"),

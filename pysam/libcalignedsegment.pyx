@@ -65,7 +65,7 @@ from cpython cimport array as c_array
 from cpython.bytearray cimport PyByteArray_FromStringAndSize, PyByteArray_GET_SIZE
 from cpython.bytes cimport PyBytes_FromStringAndSize
 from cpython.unicode cimport PyUnicode_DATA, PyUnicode_1BYTE_DATA, PyUnicode_1BYTE_KIND, \
-    PyUnicode_GET_LENGTH, PyUnicode_KIND, PyUnicode_WRITE
+    PyUnicode_GET_LENGTH, PyUnicode_KIND, PyUnicode_New, PyUnicode_WRITE
 from libc.string cimport memset, strchr
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
@@ -632,29 +632,31 @@ cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
     return end_offset
 
 
-cdef inline bytes getSequenceInRange(bam1_t *src,
-                                     uint32_t start,
-                                     uint32_t end):
+cdef inline str getSequenceInRange(const bam1_t *src, uint32_t start, uint32_t end):
     """return python string of the sequence in a bam1_t object.
     """
+    seq = PyUnicode_New(end - start, 127)
+    cdef char *dest = <char *> PyUnicode_1BYTE_DATA(seq)
+    cdef unsigned int di = 0
 
-    cdef uint8_t * p
-    cdef uint32_t k
-    cdef char * s
+    cdef const uint8_t *p = bam_get_seq(src)
+    cdef unsigned int i = start // 2
 
-    if not src.core.l_qseq:
-        return None
+    if start & 1:
+        dest[di] = seq_nt16_str[p[i] & 0x0f]
+        i += 1
+        di += 1
 
-    seq = PyBytes_FromStringAndSize(NULL, end - start)
-    s   = <char*>seq
-    p   = pysam_bam_get_seq(src)
+    for _ in range(i, end // 2):
+        dest[di]   = seq_nt16_str[p[i] >> 4]
+        dest[di+1] = seq_nt16_str[p[i] & 0x0f]
+        i += 1
+        di += 2
 
-    for k from start <= k < end:
-        # equivalent to seq_nt16_str[bam1_seqi(s, i)] (see bam.c)
-        # note: do not use string literal as it will be a python string
-        s[k-start] = seq_nt16_str[p[k//2] >> 4 * (1 - k%2) & 0xf]
+    if end & 1:
+        dest[di] = seq_nt16_str[p[i] >> 4]
 
-    return charptr_to_bytes(seq)
+    return seq
 
 
 #####################################################################
@@ -1530,8 +1532,7 @@ cdef class AlignedSegment:
                 self.cache.query_sequence = None
                 return None
 
-            self.cache.query_sequence = force_str(getSequenceInRange(
-                src, 0, src.core.l_qseq))
+            self.cache.query_sequence = getSequenceInRange(src, 0, src.core.l_qseq)
             return self.cache.query_sequence
 
         def __set__(self, seq):
@@ -1898,7 +1899,7 @@ cdef class AlignedSegment:
             start = getQueryStart(src)
             end   = getQueryEnd(src)
 
-            self.cache.query_alignment_sequence = force_str(getSequenceInRange(src, start, end))
+            self.cache.query_alignment_sequence = getSequenceInRange(src, start, end)
             return self.cache.query_alignment_sequence
 
     property query_alignment_qualities:
