@@ -211,7 +211,7 @@ def reverse_complement(seq):
         except TypeError:
             raise TypeError("Can only reverse complement str, bytes-like, or int") from None
 
-cdef inline void revcomp_bytearray_inplace(unsigned char[:] seq_view):
+cdef inline void revcomp_byte_view_inplace(unsigned char[:] seq_view):
     cdef size_t i = 0, j = seq_view.shape[0]
     cdef unsigned char tmp
 
@@ -229,13 +229,13 @@ def reverse_complement_inplace(seq):
 
     Parameters
     ----------
-    seq : bytearray
+    seq : bytearray or similar
         The sequence to be reverse complemented in place.
     """
-    if isinstance(seq, bytearray):
-        revcomp_bytearray_inplace(seq)
-    else:
-        raise TypeError("Can only reverse complement bytearray in place")
+    try:
+        revcomp_byte_view_inplace(seq)
+    except (BufferError, TypeError):
+        raise TypeError("Can only reverse complement writable bytearray-like in place") from None
 
 
 cdef inline char map_typecode_htslib_to_python(uint8_t s):
