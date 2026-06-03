@@ -72,6 +72,14 @@ from pysam.libchtslib cimport HTS_IDX_NOCOOR
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
 
+cdef extern from *:
+    r"""
+    #define CIGAR_OP_CONSUMES_QUERY_OR_HARDCLIP \
+        ((1 << BAM_CMATCH) | (1 << BAM_CINS) | (1 << BAM_CSOFT_CLIP) | \
+         (1 << BAM_CHARD_CLIP) | (1 << BAM_CEQUAL) | (1 << BAM_CDIFF))
+    """
+    const uint32_t CIGAR_OP_CONSUMES_QUERY_OR_HARDCLIP
+
 # Constants for binary tag conversion
 cdef char * htslib_types = 'cCsSiIf'
 cdef char * parray_types = 'bBhHiIf'
@@ -154,25 +162,7 @@ cdef inline uint8_t map_typecode_python_to_htslib(char s):
 
 
 cdef inline void update_bin(bam1_t * src):
-    if src.core.flag & BAM_FUNMAP:
-        # treat alignment as length of 1 for unmapped reads
-        src.core.bin = hts_reg2bin(
-            src.core.pos,
-            src.core.pos + 1,
-            14,
-            5)
-    elif pysam_get_n_cigar(src):
-        src.core.bin = hts_reg2bin(
-            src.core.pos,
-            bam_endpos(src),
-            14,
-            5)
-    else:
-        src.core.bin = hts_reg2bin(
-            src.core.pos,
-            src.core.pos + 1,
-            14,
-            5)
+    src.core.bin = hts_reg2bin(src.core.pos, bam_endpos(src), 14, 5)
 
 
 # optional tag data manipulation
@@ -415,67 +405,6 @@ cdef inline pack_tags(tags):
         fmts.append(datafmt)
 
     return "".join(fmts), args
-
-
-cdef inline int32_t calculateQueryLengthWithoutHardClipping(bam1_t * src):
-    """return query length computed from CIGAR alignment.
-
-    Length ignores hard-clipped bases.
-
-    Return 0 if there is no CIGAR alignment.
-    """
-
-    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
-
-    if cigar_p == NULL:
-        return 0
-
-    cdef uint32_t k, qpos
-    cdef int op
-    qpos = 0
-
-    for k from 0 <= k < pysam_get_n_cigar(src):
-        op = cigar_p[k] & BAM_CIGAR_MASK
-
-        if op == BAM_CMATCH or \
-           op == BAM_CINS or \
-           op == BAM_CSOFT_CLIP or \
-           op == BAM_CEQUAL or \
-           op == BAM_CDIFF:
-            qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
-
-    return qpos
-
-
-cdef inline int32_t calculateQueryLengthWithHardClipping(bam1_t * src):
-    """return query length computed from CIGAR alignment.
-
-    Length includes hard-clipped bases.
-
-    Return 0 if there is no CIGAR alignment.
-    """
-
-    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
-
-    if cigar_p == NULL:
-        return 0
-
-    cdef uint32_t k, qpos
-    cdef int op
-    qpos = 0
-
-    for k from 0 <= k < pysam_get_n_cigar(src):
-        op = cigar_p[k] & BAM_CIGAR_MASK
-
-        if op == BAM_CMATCH or \
-           op == BAM_CINS or \
-           op == BAM_CSOFT_CLIP or \
-           op == BAM_CHARD_CLIP or \
-           op == BAM_CEQUAL or \
-           op == BAM_CDIFF:
-            qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
-
-    return qpos
 
 
 cdef inline int32_t getQueryStart(bam1_t *src) except -1:
@@ -1034,9 +963,6 @@ cdef class AlignedSegment:
         if t == o:
             return 0
 
-        cdef uint8_t *a = <uint8_t*>&t.core
-        cdef uint8_t *b = <uint8_t*>&o.core
-
         retval = memcmp(&t.core, &o.core, sizeof(bam1_core_t))
         if retval:
             return retval
@@ -1272,8 +1198,7 @@ cdef class AlignedSegment:
             return self._delegate.core.pos
         def __set__(self, pos):
             ## setting the position requires updating the "bin" attribute
-            cdef bam1_t * src
-            src = self._delegate
+            cdef bam1_t *src = self._delegate
             src.core.pos = pos
             update_bin(src)
 
@@ -2027,13 +1952,14 @@ cdef class AlignedSegment:
         If *always* is set to True, `infer_read_length` is used instead.
         This is deprecated and only present for backward compatibility.
         """
-        if always is True:
+        if always:
             return self.infer_read_length()
-        cdef int32_t l = calculateQueryLengthWithoutHardClipping(self._delegate)
-        if l > 0:
-            return l
-        else:
+
+        cdef const bam1_t *src = self._delegate
+        if src.core.n_cigar == 0:
             return None
+
+        return bam_cigar2qlen(src.core.n_cigar, bam_get_cigar(src))
 
     def infer_read_length(self):
         """infer read length from CIGAR alignment.
@@ -2043,11 +1969,18 @@ cdef class AlignedSegment:
 
         Returns None if CIGAR alignment is not present.
         """
-        cdef int32_t l = calculateQueryLengthWithHardClipping(self._delegate)
-        if l > 0:
-            return l
-        else:
+        cdef const bam1_t *src = self._delegate
+        if src.core.n_cigar == 0:
             return None
+
+        cdef const uint32_t *cigar = bam_get_cigar(src)
+        cdef size_t k, qlen = 0
+
+        for k in range(src.core.n_cigar):
+            if CIGAR_OP_CONSUMES_QUERY_OR_HARDCLIP & (1 << bam_cigar_op(cigar[k])):
+                qlen += bam_cigar_oplen(cigar[k])
+
+        return qlen
 
     def get_reference_sequence(self):
         """return the reference sequence in the region that is covered by the
