@@ -31,6 +31,10 @@ from pysam.libcalignmentfile cimport AlignmentFile, AlignmentHeader
 ctypedef AlignmentFile AlignmentFile_t
 
 
+cdef class AlignedSegmentBases:
+    cdef bam1_t *_delegate
+
+
 cdef class _AlignedSegment_Cache:  # For internal use only
     cdef clear_query_sequences(self)
     cdef clear_query_qualities(self)
@@ -55,7 +59,7 @@ cdef class AlignedSegment:
     # caching of array properties for quick access
     cdef _AlignedSegment_Cache cache
 
-    cdef object unused1
+    cdef AlignedSegmentBases _query_bases
     cdef object unused2
     cdef object unused3
 
