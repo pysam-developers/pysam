@@ -1437,6 +1437,22 @@ class TestTags(ReadTest):
             after = entry.get_tags()
             self.assertEqual(after, before)
 
+    def testMDTagMissing(self):
+        a = self.build_read()
+        with pytest.raises(ValueError): a.get_reference_sequence()
+
+    def testMDTagMissingCigar(self):
+        a = self.build_read()
+        a.set_tag("MD", "5")
+        a.cigartuples = None
+        with pytest.raises(ValueError): a.get_reference_sequence()
+
+    def testMDTagMissingSeq(self):
+        a = self.build_read()
+        a.set_tag("MD", "5")
+        a.query_sequence = None
+        with pytest.raises(ValueError): a.get_reference_sequence()
+
     def testMDTagMatchOnly(self):
         a = self.build_read()
 
@@ -1834,6 +1850,17 @@ class TestForwardStrandValues(ReadTest):
         self.assertEqual(fwd_seq, a.query_sequence)
         self.assertEqual(rev_seq, a.get_forward_sequence())
 
+    def test_ambiguous_bases_are_complemented(self):
+        a = self.build_read()
+        ambiguity = "ABCDGHKMNRSTVWY"
+        reviguity = "TVGHCDMKNYSABWR"[::-1]
+
+        a.query_sequence = ambiguity
+        a.is_reverse = False
+        self.assertEqual(ambiguity, a.get_forward_sequence())
+        a.is_reverse = True
+        self.assertEqual(reviguity, a.get_forward_sequence())
+
     def test_qualities_are_complemented(self):
         a = self.build_read()
         a.is_reverse = False
@@ -1919,6 +1946,67 @@ def test_longarray_to_qualstr():
     qual_array = array.array('l', [64, 65, 66, 67, 68])
     with pytest.raises(ValueError):
         pysam.array_to_qualitystring(qual_array)
+
+
+@pytest.mark.parametrize("seq", [
+    "A",
+    "AT",
+    "GCA",
+    "ATGC",
+    "AATTG",
+    pytest.param("ABCDGHKMNRSTVWY", id="iupac"),
+])
+def test_sequence_unpacking(seq):
+    a = pysam.AlignedSegment()
+    a.query_sequence = seq
+    assert a.query_sequence == seq
+
+
+@pytest.mark.parametrize("start,stop", [
+    (0, 0), (1, 0), (2, 0), (3, 0),
+    (0, 1), (1, 1), (2, 1), (3, 1),
+    (0, 2), (1, 2), (2, 2), (3, 2),
+    (0, 3), (1, 3), (2, 3), (3, 3),
+])
+def test_subsequence_unpacking(start, stop):
+    a = pysam.AlignedSegment()
+    a.query_sequence = "ABCDGHKMNRSTVWY"
+    start_clip = f"{start}S" if start > 0 else ""
+    stop_clip = f"{stop}S" if stop > 0 else ""
+    a.cigarstring = f"{start_clip}{a.query_length - start - stop}M{stop_clip}"
+    assert a.query_alignment_sequence == a.query_sequence[start : a.query_length - stop]
+
+
+@pytest.mark.parametrize("seq,revcomp", [
+    ("", ""),
+    ("A", "T"),
+    ("gC", "Gc"),
+    ("AAT", "ATT"),
+    ("ACGT", "ACGT"),
+    ("AATCG", "CGATT"),
+    ("aATGGC", "GCCATt"),
+    pytest.param("ABCDGHKMNRSTVWY-NNN-abcdghkmnrstvwy--AAASW",
+                 "TVGHCDMKNYSABWR-NNN-tvghcdmknysabwr--TTTSW"[::-1], id="iupac"),
+])
+def test_reverse_complement(seq, revcomp):
+    assert isinstance(seq, str)
+    assert pysam.reverse_complement(seq) == revcomp
+
+    seq_4byte_kind = f"→{seq}𐘂"
+    assert isinstance(seq_4byte_kind, str)
+    assert pysam.reverse_complement(seq_4byte_kind) == f"𐘂{revcomp}→"
+
+    seq_bytes = seq.encode("ascii")
+    revcomp_bytes = revcomp.encode("ascii")
+    assert isinstance(seq_bytes, bytes)
+    assert pysam.reverse_complement(seq_bytes) == revcomp_bytes
+
+    seq_ba = bytearray(seq_bytes)
+    assert isinstance(seq_ba, bytearray)
+    assert pysam.reverse_complement(seq_ba) == revcomp_bytes
+
+    pysam.reverse_complement_inplace(seq_ba)
+    assert seq_ba == revcomp_bytes
 
 
 if __name__ == "__main__":

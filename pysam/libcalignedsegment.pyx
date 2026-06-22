@@ -62,14 +62,17 @@ import struct
 
 cimport cython
 from cpython cimport array as c_array
+from cpython.bytearray cimport PyByteArray_FromStringAndSize, PyByteArray_GET_SIZE
 from cpython.bytes cimport PyBytes_FromStringAndSize
+from cpython.unicode cimport PyUnicode_DATA, PyUnicode_1BYTE_DATA, PyUnicode_1BYTE_KIND, \
+    PyUnicode_GET_LENGTH, PyUnicode_KIND, PyUnicode_New, PyUnicode_WRITE
 from libc.string cimport memset, strchr
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
 
 from pysam.libchtslib cimport HTS_IDX_NOCOOR
-from pysam.libcutils cimport force_bytes, force_str, \
+from pysam.libcutils cimport PysamUnicode_NewCloneWithSize, force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
 
 cdef extern from *:
@@ -139,6 +142,108 @@ cdef inline bint pileup_base_qual_skip(const bam_pileup1_t * p, uint32_t thresho
     if c < threshold:
         return True
     return False
+
+
+cdef inline str revcomp_1byte_str(str destseq, str seq, size_t n):
+    cdef const unsigned char *src = PyUnicode_1BYTE_DATA(seq)
+    cdef unsigned char *dest = PyUnicode_1BYTE_DATA(destseq)
+    dest += n
+
+    for _ in range(n):
+        dest -= 1
+        dest[0] = pysam_seq_comp_table[src[0]]
+        src += 1
+
+    return destseq
+
+cdef inline str revcomp_str(str destseq, str seq, size_t n):
+    cdef unsigned int kind = PyUnicode_KIND(destseq)
+    cdef void *dest = PyUnicode_DATA(destseq)
+
+    cdef size_t i = n
+    for b in seq:
+        i -= 1
+        PyUnicode_WRITE(kind, dest, i, pysam_seq_comp_table[b] if b < 256 else b)
+
+    return destseq
+
+cdef inline int revcomp_int(int b):
+    return (b & 1) << 3 | (b & 2) << 1 | (b & 4) >> 1 | (b & 8) >> 3
+
+cdef inline object revcomp_bytes(object destseq, const unsigned char[:] seq_view):
+    cdef size_t n = seq_view.shape[0]
+    cdef unsigned char *dest = destseq
+
+    cdef size_t i, max_idx = n - 1
+    for i in range(n):
+        dest[max_idx - i] = pysam_seq_comp_table[seq_view[i]]
+
+    return destseq
+
+def reverse_complement(seq):
+    """Return a new string containing the reverse complement of the sequence
+    of bases in `seq`. The sequence may include N, X, and IUPAC ambiguity codes.
+    Both T and U are complemented as A. Other characters that do not represent
+    nucleotides should not be present, but if they are they are left unchanged.
+
+    Parameters
+    ----------
+    seq : str or bytearray or bytes or int
+        The sequence to be reverse complemented. When `seq` is :class:`int`,
+        it is considered to be a single base represented in the 4-bit 0--15
+        encoding used by :term:`BAM`'s SEQ field.
+
+    Returns
+    -------
+    The same type as `seq`.
+    """
+    cdef size_t length
+
+    if isinstance(seq, str):
+        length = PyUnicode_GET_LENGTH(seq)
+        revcomp = PysamUnicode_NewCloneWithSize(seq, length)
+        if PyUnicode_KIND(revcomp) == PyUnicode_1BYTE_KIND:
+            return revcomp_1byte_str(revcomp, seq, length)
+        else:
+            return revcomp_str(revcomp, seq, length)
+
+    elif isinstance(seq, int):
+        return revcomp_int(seq)
+
+    elif isinstance(seq, bytearray):
+        return revcomp_bytes(PyByteArray_FromStringAndSize(NULL, PyByteArray_GET_SIZE(seq)), seq)
+
+    else:
+        try:
+            return revcomp_bytes(PyBytes_FromStringAndSize(NULL, len(seq)), seq)
+        except TypeError:
+            raise TypeError("Can only reverse complement str, bytes-like, or int") from None
+
+cdef inline void revcomp_byte_view_inplace(unsigned char[:] seq_view):
+    cdef size_t i = 0, j = seq_view.shape[0]
+    cdef unsigned char tmp
+
+    while i < j:
+        j -= 1
+        tmp = pysam_seq_comp_table[seq_view[i]]
+        seq_view[i] = pysam_seq_comp_table[seq_view[j]]
+        seq_view[j] = tmp
+        i += 1
+
+def reverse_complement_inplace(seq):
+    """Update `seq` by reverse complementing its sequence of bases, which may
+    include N, X, and IUPAC ambiguity codes. Both T and U are complemented
+    as A.
+
+    Parameters
+    ----------
+    seq : bytearray or similar
+        The sequence to be reverse complemented in place.
+    """
+    try:
+        revcomp_byte_view_inplace(seq)
+    except (BufferError, TypeError):
+        raise TypeError("Can only reverse complement writable bytearray-like in place") from None
 
 
 cdef inline char map_typecode_htslib_to_python(uint8_t s):
@@ -456,29 +561,31 @@ cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
     return end_offset
 
 
-cdef inline bytes getSequenceInRange(bam1_t *src,
-                                     uint32_t start,
-                                     uint32_t end):
+cdef inline str getSequenceInRange(const bam1_t *src, uint32_t start, uint32_t end):
     """return python string of the sequence in a bam1_t object.
     """
+    seq = PyUnicode_New(end - start, 127)
+    cdef char *dest = <char *> PyUnicode_1BYTE_DATA(seq)
+    cdef unsigned int di = 0
 
-    cdef uint8_t * p
-    cdef uint32_t k
-    cdef char * s
+    cdef const uint8_t *p = bam_get_seq(src)
+    cdef unsigned int i = start // 2
 
-    if not src.core.l_qseq:
-        return None
+    if start & 1:
+        dest[di] = seq_nt16_str[p[i] & 0x0f]
+        i += 1
+        di += 1
 
-    seq = PyBytes_FromStringAndSize(NULL, end - start)
-    s   = <char*>seq
-    p   = pysam_bam_get_seq(src)
+    for _ in range(i, end // 2):
+        dest[di]   = seq_nt16_str[p[i] >> 4]
+        dest[di+1] = seq_nt16_str[p[i] & 0x0f]
+        i += 1
+        di += 2
 
-    for k from start <= k < end:
-        # equivalent to seq_nt16_str[bam1_seqi(s, i)] (see bam.c)
-        # note: do not use string literal as it will be a python string
-        s[k-start] = seq_nt16_str[p[k//2] >> 4 * (1 - k%2) & 0xf]
+    if end & 1:
+        dest[di] = seq_nt16_str[p[i] >> 4]
 
-    return charptr_to_bytes(seq)
+    return seq
 
 
 #####################################################################
@@ -490,6 +597,8 @@ cdef AlignedSegment makeAlignedSegment(bam1_t *src,
     # note that the following does not call __init__
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
+    if dest._delegate == NULL:
+        raise MemoryError("Could not allocate memory for AlignedSegment")
     dest.header = header
     dest.cache = _AlignedSegment_Cache()
     return dest
@@ -583,7 +692,6 @@ cdef inline uint32_t get_md_reference_length(char * md_tag):
     l += nmatches
     return l
 
-# TODO: avoid string copying for getSequenceInRange, reconstituneSequenceFromMD, ...
 cdef inline bytes build_alignment_sequence(bam1_t * src):
     """return expanded sequence from MD tag.
 
@@ -600,30 +708,20 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
        Deletion from the reference:    cigar=5M1D5M    MD=5^C5
        Skipped region from reference:  cigar=5M1N5M    MD=10
        Padded region in the reference: cigar=5M1P5M    MD=10
-
-    Returns
-    -------
-
-    None, if no MD tag is present.
-
     """
-    if src == NULL:
-        return None
-
     cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")
     if md_tag_ptr == NULL:
-        return None
+        raise ValueError("MD tag not present")
 
-    cdef uint32_t start = getQueryStart(src)
-    cdef uint32_t end = getQueryEnd(src)
-    # get read sequence, taking into account soft-clipping
-    r = getSequenceInRange(src, start, end)
-    cdef char * read_sequence = r
+    if src.core.l_qseq == 0:
+        raise ValueError("SEQ field not present")
+    if src.core.n_cigar == 0:
+        raise ValueError("CIGAR field not present")
+
+    cdef const uint8_t *seq_p = bam_get_seq(src)
     cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
-    if cigar_p == NULL:
-        return None
 
-    cdef uint32_t r_idx = 0
+    cdef uint32_t r_idx = getQueryStart(src)  # take soft-clipping into account
     cdef int op
     cdef uint32_t k, i, l, x
     cdef int nmatches = 0
@@ -643,7 +741,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         l = cigar_p[k] >> BAM_CIGAR_SHIFT
         if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
             for i from 0 <= i < l:
-                s[s_idx] = read_sequence[r_idx]
+                s[s_idx] = seq_nt16_str[bam_seqi(seq_p, r_idx)]
                 r_idx += 1
                 s_idx += 1
         elif op == BAM_CDEL:
@@ -655,7 +753,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         elif op == BAM_CINS or op == BAM_CPAD:
             for i from 0 <= i < l:
                 # encode insertions into reference as lowercase
-                s[s_idx] = read_sequence[r_idx] + 32
+                s[s_idx] = seq_nt16_str[bam_seqi(seq_p, r_idx)] + 32
                 r_idx += 1
                 s_idx += 1
         elif op == BAM_CSOFT_CLIP:
@@ -752,15 +850,12 @@ cdef inline bytes build_reference_sequence(bam1_t * src):
     """return the reference sequence in the region that is covered by the
     alignment of the read to the reference.
 
-    This method requires the MD tag to be set.
-
+    This method requires the SEQ and CIGAR fields and the MD tag to be present.
     """
     cdef uint32_t k, i, l
     cdef int op
     cdef int s_idx = 0
     ref_seq = build_alignment_sequence(src)
-    if ref_seq is None:
-        raise ValueError("MD tag not present")
 
     cdef char * s = <char*>calloc(len(ref_seq) + 1, sizeof(char))
     if s == NULL:
@@ -872,7 +967,7 @@ cdef class AlignedSegment:
         # see bam_init1
         self._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
         if self._delegate == NULL:
-            raise MemoryError("could not allocated memory of {} bytes".format(sizeof(bam1_t)))
+            raise MemoryError("Could not allocate memory for AlignedSegment")
         # allocate some memory. If size is 0, calloc does not return a
         # pointer that can be passed to free() so allocate 40 bytes
         # for a new read
@@ -1035,6 +1130,8 @@ cdef class AlignedSegment:
         """
         cdef AlignedSegment dest = cls.__new__(cls)
         dest._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
+        if dest._delegate == NULL:
+            raise MemoryError("Could not allocate memory for AlignedSegment")
         dest.header = header
         dest.cache = _AlignedSegment_Cache()
 
@@ -1360,8 +1457,7 @@ cdef class AlignedSegment:
                 self.cache.query_sequence = None
                 return None
 
-            self.cache.query_sequence = force_str(getSequenceInRange(
-                src, 0, src.core.l_qseq))
+            self.cache.query_sequence = getSequenceInRange(src, 0, src.core.l_qseq)
             return self.cache.query_sequence
 
         def __set__(self, seq):
@@ -1728,7 +1824,7 @@ cdef class AlignedSegment:
             start = getQueryStart(src)
             end   = getQueryEnd(src)
 
-            self.cache.query_alignment_sequence = force_str(getSequenceInRange(src, start, end))
+            self.cache.query_alignment_sequence = getSequenceInRange(src, start, end)
             return self.cache.query_alignment_sequence
 
     property query_alignment_qualities:
@@ -2002,10 +2098,7 @@ cdef class AlignedSegment:
         """
         if self.query_sequence is None:
             return None
-        s = force_str(self.query_sequence)
-        if self.is_reverse:
-            s = s.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
-        return s
+        return reverse_complement(self.query_sequence) if self.is_reverse else self.query_sequence
 
     def get_forward_qualities(self):
         """return the original base qualities of the read sequence,
@@ -3446,4 +3539,7 @@ __all__ = [
     "FQCFAIL",
     "FDUP",
     "FSUPPLEMENTARY",
-    "KEY_NAMES"]
+    "KEY_NAMES",
+    "reverse_complement",
+    "reverse_complement_inplace",
+]
