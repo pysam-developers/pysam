@@ -19,7 +19,12 @@ dynamic = [
 
 [build-system]
 requires = ["setuptools>=59.0", "Cython>=3,<4"]
-build-backend = "setuptools.build_meta:__legacy__"
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+build = ["setuptools>=59.0", "Cython>=3,<4"]
+dev = ["pytest>=6", {include-group = "build"}]
+doc = ["sphinx>=8", "sphinx-rtd-theme>=3"]
 
 [tool.cibuildwheel]
 before-all = "{project}/devtools/install-prerequisites.sh {project}/devtools/emulate-tools.py /usr/local/bin"
@@ -28,3 +33,9 @@ before-build = "make -C {project}/htslib distclean"
 
 test-requires = ["pytest"]
 test-command = "pytest {project}/tests"
+
+[tool.pytest.ini_options]
+# -s: do not capture stdout, conflicts with pysam.dispatch
+# -v: verbose output
+addopts = "-s -v"
+testpaths = ["tests"]

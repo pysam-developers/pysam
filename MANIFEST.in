@@ -9,7 +9,6 @@ include NEWS
 include INSTALL
 include KNOWN_BUGS
 include THANKS
-include requirements-dev.txt
 include pysam/libc*.pxd
 include pysam/libc*.pyx
 include pysam/libc*.c
@@ -46,4 +45,4 @@ exclude htslib/config.mk htslib/htscodecs.mk
 
 # documentation
 include doc/*.py doc/*.rst
-include doc/Makefile doc/make.bat doc/requirements-rtd.txt
+include doc/Makefile doc/make.bat
