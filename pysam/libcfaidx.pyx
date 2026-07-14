@@ -1,5 +1,4 @@
 # cython: language_level=3
-# cython: embedsignature=True
 ###############################################################################
 ###############################################################################
 # Cython wrapper for SAM/BAM/CRAM files based on htslib
@@ -420,28 +419,20 @@ cdef class FastxRecord:
     A record must contain a name and a sequence. If either of them are
     None, a ValueError is raised on writing.
 
-    Attributes
-    ----------
-    name : str
-        The name (identifier) of the record.
-    sequence : str
-        The nucleotide or amino acid sequence.
-    comment : str or None
-        An optional comment or description following the name.
-    quality : str or None
-        Quality scores as an ASCII-encoded string (for FASTQ records).
-        None for FASTA records.
-
     Parameters
     ----------
     name : str, optional
         The name of the record.
+
     comment : str, optional
         An optional comment for the record.
+
     sequence : str, optional
         The sequence of the record.
+
     quality : str, optional
         Quality scores as an ASCII-encoded string.
+
     proxy : FastqProxy, optional
         If provided, initialize from an existing FastqProxy object.
 
@@ -457,7 +448,6 @@ cdef class FastxRecord:
     ACGT
     +
     IIII
-
     """
     def __init__(self,
                  name=None,
@@ -505,16 +495,18 @@ cdef class FastxRecord:
         return self.to_string()
 
     def set_name(self, name):
+        """Set the record's name, which must not be None."""
         if name is None:
             raise ValueError("FastxRecord must have a name and not None")
         self.name = name
 
     def set_comment(self, comment):
+        """Set the record's optional comment."""
         self.comment = comment
 
     def set_sequence(self, sequence, quality=None):
-        """set sequence of this record.
-
+        """Set the sequence and optionally the quality scores of this record.
+        If `quality` is specified, it must be the same length as `sequence`.
         """
         self.sequence = sequence
         if quality is not None:
@@ -528,6 +520,9 @@ cdef class FastxRecord:
 
     def __str__(self):
         return self.to_string()
+
+    def __repr__(self):
+        return f"<{type(self).__name__}(name={self.name!r}, comment={self.comment!r}, sequence={self.sequence!r}, quality={self.quality!r})>"
 
     cpdef array.array get_quality_array(self, int offset=33):
         '''return quality values as array after subtracting offset.'''
@@ -547,12 +542,12 @@ cdef class FastxFile:
 
     This file object permits iterating over all entries in the
     file. Random access is not implemented. The iteration returns
-    objects of type :class:`FastqProxy`
+    objects of type :class:`FastxRecord` or :class:`FastqProxy`
+    as determined by `persist`.
 
     Parameters
     ----------
-
-    filename : string
+    filename : str
         Filename of fasta/fastq file to be opened.
 
     persist : bool
@@ -568,7 +563,6 @@ cdef class FastxFile:
 
     Raises
     ------
-
     IOError
         if file could not be opened
 

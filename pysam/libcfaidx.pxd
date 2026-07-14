@@ -42,7 +42,16 @@ cdef class FastxRecord:
     """
     Python container for pysam.libcfaidx.FastqProxy with persistence.
     """
-    cdef public str comment, quality, sequence, name
+    cdef public str comment
+    """str or None : An optional comment or description following the name."""
+    cdef public str quality
+    """str or None : Quality scores as an ASCII-encoded string (for FASTQ records).
+    None for FASTA records.
+    """
+    cdef public str sequence
+    """str : The nucleotide or amino acid sequence."""
+    cdef public str name
+    """str : The name (identifier) of the record."""
     cdef cython.str to_string(self)
     cdef cython.str tostring(self)
     cpdef array.array get_quality_array(self, int offset=*)
