@@ -34,6 +34,7 @@ DEALINGS IN THE SOFTWARE.  */
 
 #include <errno.h>
 #include <pthread.h>
+#include <sys/stat.h>
 
 #include "hfile_internal.h"
 #ifdef ENABLE_PLUGINS
@@ -1462,6 +1463,16 @@ static CURLcode set_common_easy_options(hFILE_s3 *fp) {
     if (ca_bundle) {
         err |= curl_easy_setopt(fp->curl, CURLOPT_CAINFO, ca_bundle);
     }
+#if defined __linux__ && defined BUILDING_WHEEL
+    else {
+        // Linux wheels are (currently) built on AlmaLinux; set bundle location to
+        // the usual Debian-style location if the Red Hat-style one isn't present.
+        // (See similar hfile_libcurl.c patch for further details.)
+        struct stat st;
+        if (stat("/etc/pki", &st) < 0 && errno == ENOENT)
+            err |= curl_easy_setopt(fp->curl, CURLOPT_CAINFO, "/etc/ssl/certs/ca-certificates.crt");
+    }
+#endif
 
     return err;
 }
