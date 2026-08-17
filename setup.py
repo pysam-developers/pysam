@@ -635,7 +635,7 @@ else:
 
 define_macros = []
 
-if os.environ.get("CIBUILDWHEEL", "0") == "1":
+if truthy(os.environ.get("CIBUILDWHEEL", "0")):
     define_macros.append(("BUILDING_WHEEL", None))
 
 suffix = sysconfig.get_config_var('EXT_SUFFIX')

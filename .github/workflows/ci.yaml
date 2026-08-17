@@ -38,6 +38,9 @@ jobs:
           brew unlink xz || true  # Remove brewed liblzma as it is not multiarch
 
       - name: Build (directly from checkout)
+        env:
+          # Test the BUILDING_WHEEL code in one configuration
+          CIBUILDWHEEL: ${{ matrix.python-version == '3.14' }}
         run:  python setup.py build
 
       - name: Install test prerequisites
