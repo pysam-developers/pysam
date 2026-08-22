@@ -6,7 +6,7 @@ from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
 from libc.stdio cimport FILE, printf
 
 from pysam.libcfaidx cimport faidx_t, FastaFile
-from pysam.libcalignedsegment cimport AlignedSegment
+from pysam.libcalignedsegment cimport AlignedSegment, PileupColumn
 from pysam.libchtslib cimport *
 
 cimport cython
@@ -126,6 +126,7 @@ cdef class IteratorColumn:
 
     cdef reset(self, tid, start, stop)
     cdef _free_pileup_iter(self)
+    cdef PileupColumn _make_column(self)
     # backwards compatibility
     cdef char * getSequence(self)
 
