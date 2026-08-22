@@ -611,10 +611,14 @@ cdef PileupColumn makePileupColumn(const bam_pileup1_t ** plp,
                       int n_pu,
                       uint32_t min_base_quality,
                       char * reference_sequence,
-                      AlignmentHeader header):
+                      AlignmentHeader header,
+                      object owner):
     '''return a PileupColumn object constructed from pileup in `plp` and
     setting additional attributes.
 
+    `plp`/`reference_sequence` point into memory owned by `owner` (the
+    iterator that produced this column); keep it alive for as long as
+    the column is, so those pointers stay valid.
     '''
     # note that the following does not call __init__
     cdef PileupColumn dest = PileupColumn.__new__(PileupColumn)
@@ -625,6 +629,7 @@ cdef PileupColumn makePileupColumn(const bam_pileup1_t ** plp,
     dest.n_pu = n_pu
     dest.min_base_quality = min_base_quality
     dest.reference_sequence = reference_sequence
+    dest.owner = owner
     dest.buf.l = dest.buf.m = 0
     dest.buf.s = NULL
 

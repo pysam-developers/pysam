@@ -768,13 +768,19 @@ class TestIteratorColumnRecords:
                 next(iter_col)
 
     def test_access_after_iterator_out_of_scope(self):
-        """Test accessing a column after its iterator is gone raises ValueError.
+        """Test a column stays safely usable after nothing else references its iterator.
 
-        Mirrors TestPileupObjects.testIteratorOutOfScope /
-        TestIteratorColumn2.testAccessOnClosedIterator (see issue 131) for
-        AlignmentFile.pileup()'s IteratorColumn family: a PileupColumn is a
-        view onto its iterator's own buffer, not an independent copy, so it
-        must stop being usable once nothing keeps that iterator alive.
+        Unlike AlignmentFile.pileup()'s IteratorColumn family (see
+        TestPileupObjects.testIteratorOutOfScope / issue 131 / issue
+        1151), where a PileupColumn is a raw view onto its iterator's
+        buffer and accessing one after the iterator is gone is
+        undefined behavior (a NULL check that depends on freed memory
+        still reading back as NULL -- known to segfault instead of
+        raising on some Python versions), a PileupColumn from
+        IteratorColumnRecords holds a reference to the iterator that
+        produced it, keeping it alive for exactly this case. Dropping
+        every other reference to the iterator must not make the column
+        unusable or unsafe.
         """
         from pysam.libcalignmentfile import IteratorColumnRecords
 
@@ -783,10 +789,8 @@ class TestIteratorColumnRecords:
 
         col = next(IteratorColumnRecords(records))
 
-        with pytest.raises(ValueError):
-            col.pileups
-        with pytest.raises(ValueError):
-            col.get_num_aligned()
+        assert col.get_num_aligned() >= 0
+        assert list(col.pileups) is not None
 
     def test_records_are_consumed_lazily(self):
         """Test records are pulled from `recs` only as iteration requires them.

@@ -2714,7 +2714,8 @@ cdef class IteratorColumnRegion(IteratorColumn):
                                     self.n_plp,
                                     self.min_base_quality,
                                     self.iterdata.seq,
-                                    self.samfile.header)
+                                    self.samfile.header,
+                                    None)
 
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
@@ -2756,7 +2757,8 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                                     self.n_plp,
                                     self.min_base_quality,
                                     self.iterdata.seq,
-                                    self.samfile.header)
+                                    self.samfile.header,
+                                    None)
 
 
 cdef class IteratorColumnAll(IteratorColumn):
@@ -2785,7 +2787,8 @@ cdef class IteratorColumnAll(IteratorColumn):
                                 self.n_plp,
                                 self.min_base_quality,
                                 self.iterdata.seq,
-                                self.samfile.header)
+                                self.samfile.header,
+                                None)
 
 
 cdef int __advance_records_gil(void *data, bam1_t *b):
@@ -2984,7 +2987,8 @@ cdef class IteratorColumnRecords:
                                 self.n_plp,
                                 self.min_base_quality,
                                 self.seq,
-                                self.header)
+                                self.header,
+                                self)
 
     cdef char * get_sequence(self):
         '''return current reference sequence underlying the iterator.
