@@ -2792,12 +2792,6 @@ cdef int __advance_records_gil(void *data, bam1_t *b):
     '''do the actual work of `__advance_records`; always called with the
     GIL held, so it is free to use Python objects.
 
-    Pulls the next :class:`~pysam.AlignedSegment` from the Python
-    iterable supplied at construction and copies it into `b`. This lets
-    htslib's own ``bam_mplp64_auto()`` pull input lazily, one record at a
-    time, only as needed to resolve each column, rather than requiring
-    every record be pushed up front.
-
     A Python exception raised while pulling a record (anything other
     than the iterable's own exhaustion) cannot propagate through the
     nogil C callback boundary in `__advance_records`, so it is stashed
@@ -2813,19 +2807,27 @@ cdef int __advance_records_gil(void *data, bam1_t *b):
     except BaseException as exc:
         it.pending_exception = exc
         return -2
-    if it.header is None:
-        it.header = rec.header
-    if bam_copy1(b, (<AlignedSegment>rec)._delegate) == NULL:
-        it.pending_exception = MemoryError("could not copy record into the pileup buffer")
+    # the `?` is required, not decorative: an unchecked cast on a
+    # non-AlignedSegment `rec` doesn't raise, it corrupts memory instead
+    try:
+        if it.header is None:
+            it.header = rec.header
+        if bam_copy1(b, (<AlignedSegment?>rec)._delegate) == NULL:
+            raise MemoryError("could not copy record into the pileup buffer")
+    except BaseException as exc:
+        it.pending_exception = exc
         return -2
     return 0
 
 
 cdef int __advance_records(void *data, bam1_t *b) noexcept nogil:
     '''advance callback for :class:`IteratorColumnRecords`, matching the
-    `bam_plp_auto_f` signature. Reacquires the GIL to run
-    `__advance_records_gil`, since pulling from the Python iterable
-    requires it.
+    `bam_plp_auto_f` signature.
+
+    `cnext()` below never releases the GIL, so it is always already held
+    here; `with gil:` is a no-op reacquisition today, kept explicit
+    because pulling from the Python iterable genuinely needs it and
+    that would stop being true silently if `cnext()` ever changed.
     '''
     with gil:
         return __advance_records_gil(data, b)
@@ -2923,13 +2925,7 @@ cdef class IteratorColumnRecords:
         if self.pileup_iter != <bam_mplp_t>NULL:
             bam_mplp_destroy(self.pileup_iter)
             self.pileup_iter = <bam_mplp_t>NULL
-        # A PileupColumn.plp returned by __next__() points at this
-        # instance's own `plp` field rather than at a copy, matching
-        # IteratorColumn (see its __dealloc__). Null it out here so that
-        # PileupColumn's own NULL check (self.plp[0] == NULL) can detect
-        # a column read after this iterator is gone, instead of leaving
-        # that check to observe whatever this field's freed memory
-        # happens to still hold.
+        # null plp so PileupColumn's NULL check detects a stale column, as in IteratorColumn
         self.plp = <const bam_pileup1_t*>NULL
         if self.seq != NULL:
             free(self.seq)
@@ -2941,7 +2937,8 @@ cdef class IteratorColumnRecords:
     cdef int cnext(self):
         '''perform next iteration.
         '''
-        # do not release gil here: __advance_records reacquires it internally
+        # do not release gil here: __advance_records needs it to pull from
+        # the Python iterable
         return bam_mplp64_auto(self.pileup_iter,
                                &self.tid,
                                &self.pos,

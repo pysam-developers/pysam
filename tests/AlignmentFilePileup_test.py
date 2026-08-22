@@ -325,9 +325,9 @@ class TestPileUpColumns:
     - from_file=False: Uses IteratorColumnRecords with manually filtered records
 
     Note: The from_file=False case may show minor depth discrepancies (~1 read at some
-    positions) compared to samtools mpileup due to differences between push-based
-    (bam_plp_push) and pull-based (callback) pileup construction. See IteratorColumnRecords
-    documentation for details.
+    positions) compared to samtools mpileup: unlike AlignmentFile.pileup()'s
+    stepper="samtools", IteratorColumnRecords does not apply BAQ computation or
+    mapping-quality adjustment. See IteratorColumnRecords documentation for details.
     """
     from_file: bool
 
@@ -342,8 +342,9 @@ class TestPileUpColumns:
             # from_file=True should match samtools exactly
             assert pysam_result == samtools_result
         else:
-            # from_file=False may have minor discrepancies due to push-based vs pull-based
-            # pileup construction. Verify results are "close enough":
+            # from_file=False may have minor discrepancies since IteratorColumnRecords
+            # doesn't apply BAQ computation or mapping-quality adjustment. Verify
+            # results are "close enough":
             # - Same number of positions
             # - Differences at most ±1 read per position
             # - Differences at a small percentage of positions (< 1%)
@@ -620,11 +621,6 @@ class TestIteratorColumnRecords:
         below min_base_quality and out of the count. With
         ignore_overlaps=False, both mates' original qualities are left
         intact.
-
-        Note: as with AlignmentFile.pileup(), a PileupColumn is a view
-        onto its iterator's own buffer, so it must be inspected while
-        the iterator that produced it is still alive (here, inside the
-        list comprehension) rather than after the fact.
         """
         from pysam.libcalignmentfile import IteratorColumnRecords
 
@@ -826,3 +822,58 @@ class TestIteratorColumnRecords:
             # Draining the iterator consumes the rest of the input.
             list(iter_col)
             assert len(consumed) == total
+
+    def test_exception_from_recs_propagates_with_original_type(self):
+        """Test an exception raised while pulling from `recs` surfaces unchanged.
+
+        A Python exception raised inside the pull callback can't cross the
+        nogil C callback boundary directly, so it is stashed and re-raised
+        once control returns to __next__(). This must preserve the
+        exception's actual type rather than reporting a generic error.
+        """
+        from pysam.libcalignmentfile import IteratorColumnRecords
+
+        with pysam.AlignmentFile(self.fn) as inf:
+            records = [rec for rec in inf][:5]
+
+        def failing_gen():
+            yield from records
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            list(IteratorColumnRecords(failing_gen()))
+
+    def test_non_alignedsegment_first_record_raises(self):
+        """Test a non-AlignedSegment as the very first yielded value raises cleanly.
+
+        Regression test: the pull callback's guard originally covered only
+        `next(recs_iter)` itself. For the first record (before `header` is
+        set), the very next statement accesses `rec.header`; on a
+        non-AlignedSegment this raised AttributeError outside that guard,
+        which a `noexcept nogil` callback silently drops instead of
+        propagating, so the iterator produced an empty result with no
+        error at all.
+        """
+        from pysam.libcalignmentfile import IteratorColumnRecords
+
+        with pytest.raises(AttributeError):
+            list(IteratorColumnRecords(iter(["not an AlignedSegment"])))
+
+    def test_non_alignedsegment_later_record_raises(self):
+        """Test a non-AlignedSegment after the first record raises cleanly.
+
+        Regression test: the pull callback's `<AlignedSegment>rec` cast
+        was previously unchecked, so a non-AlignedSegment `rec` did not
+        raise TypeError at all -- it silently reinterpreted whatever
+        `rec` actually is as an AlignedSegment's memory layout, and the
+        resulting garbage `_delegate` pointer crashed the interpreter a
+        few frames later inside bam_copy1(). The cast must be the
+        checked `<AlignedSegment?>rec` form.
+        """
+        from pysam.libcalignmentfile import IteratorColumnRecords
+
+        with pysam.AlignmentFile(self.fn) as inf:
+            records = [rec for rec in inf][:5]
+
+        with pytest.raises(TypeError):
+            list(IteratorColumnRecords(iter(records + ["not an AlignedSegment"])))
