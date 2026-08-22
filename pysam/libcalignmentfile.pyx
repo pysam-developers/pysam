@@ -2923,6 +2923,14 @@ cdef class IteratorColumnRecords:
         if self.pileup_iter != <bam_mplp_t>NULL:
             bam_mplp_destroy(self.pileup_iter)
             self.pileup_iter = <bam_mplp_t>NULL
+        # A PileupColumn.plp returned by __next__() points at this
+        # instance's own `plp` field rather than at a copy, matching
+        # IteratorColumn (see its __dealloc__). Null it out here so that
+        # PileupColumn's own NULL check (self.plp[0] == NULL) can detect
+        # a column read after this iterator is gone, instead of leaving
+        # that check to observe whatever this field's freed memory
+        # happens to still hold.
+        self.plp = <const bam_pileup1_t*>NULL
         if self.seq != NULL:
             free(self.seq)
             self.seq = NULL
