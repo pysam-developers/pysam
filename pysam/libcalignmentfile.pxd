@@ -144,6 +144,24 @@ cdef class IteratorColumnAll(IteratorColumn):
     pass
 
 
+cdef class IteratorColumnRecords:
+    cdef int cnext(self)
+    cdef bam_mplp_t pileup_iter
+    cdef int tid
+    cdef hts_pos_t pos
+    cdef int n_plp
+    cdef uint32_t min_base_quality
+    cdef const bam_pileup1_t * plp
+    cdef AlignmentHeader header
+    cdef char * seq
+    cdef hts_pos_t _seq_len
+    cdef int seq_tid
+    cdef faidx_t * fastafile
+    cdef object recs_iter
+    cdef object pending_exception
+    cdef char * get_sequence(self)
+
+
 cdef class IndexedReads:
     cdef AlignmentFile samfile
     cdef htsFile * htsfile

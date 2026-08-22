@@ -29,6 +29,7 @@
 # class IteratorColumnRegion
 # class IteratorColumnAll
 # class IteratorColumnAllRefs
+# class IteratorColumnRecords
 #
 ########################################################
 #
@@ -57,6 +58,8 @@
 ########################################################
 import os
 import collections
+from typing import Iterable, Optional
+
 try:
     from collections.abc import Sequence, Mapping  # noqa
 except ImportError:
@@ -74,7 +77,7 @@ from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport OSError_from_errno, encode_filename, from_string_and_size
 from pysam.libcalignedsegment cimport makeAlignedSegment, makePileupColumn
 from pysam.libchtslib cimport HTSFile, hisremote, sam_index_load2, sam_index_load3, \
-                              HTS_IDX_SAVE_REMOTE, HTS_IDX_SILENT_FAIL
+                              HTS_IDX_SAVE_REMOTE, HTS_IDX_SILENT_FAIL, hts_pos_t
 
 from io import StringIO
 
@@ -86,6 +89,7 @@ __all__ = [
     "AlignmentHeader",
     "IteratorRow",
     "IteratorColumn",
+    "IteratorColumnRecords",
     "IndexedReads"]
 
 IndexStats = collections.namedtuple("IndexStats",
@@ -2710,7 +2714,8 @@ cdef class IteratorColumnRegion(IteratorColumn):
                                     self.n_plp,
                                     self.min_base_quality,
                                     self.iterdata.seq,
-                                    self.samfile.header)
+                                    self.samfile.header,
+                                    None)
 
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
@@ -2752,7 +2757,8 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                                     self.n_plp,
                                     self.min_base_quality,
                                     self.iterdata.seq,
-                                    self.samfile.header)
+                                    self.samfile.header,
+                                    None)
 
 
 cdef class IteratorColumnAll(IteratorColumn):
@@ -2781,7 +2787,232 @@ cdef class IteratorColumnAll(IteratorColumn):
                                 self.n_plp,
                                 self.min_base_quality,
                                 self.iterdata.seq,
-                                self.samfile.header)
+                                self.samfile.header,
+                                None)
+
+
+cdef int __advance_records_gil(void *data, bam1_t *b):
+    '''do the actual work of `__advance_records`; always called with the
+    GIL held, so it is free to use Python objects.
+
+    A Python exception raised while pulling a record (anything other
+    than the iterable's own exhaustion) cannot propagate through the
+    nogil C callback boundary in `__advance_records`, so it is stashed
+    on `it.pending_exception` and re-raised by
+    :meth:`IteratorColumnRecords.__next__` once control returns to
+    Python.
+    '''
+    cdef IteratorColumnRecords it = <IteratorColumnRecords>data
+    try:
+        rec = next(it.recs_iter)
+    except StopIteration:
+        return -1
+    except BaseException as exc:
+        it.pending_exception = exc
+        return -2
+    # the `?` is required, not decorative: an unchecked cast on a
+    # non-AlignedSegment `rec` doesn't raise, it corrupts memory instead
+    try:
+        if it.header is None:
+            it.header = rec.header
+        if bam_copy1(b, (<AlignedSegment?>rec)._delegate) == NULL:
+            raise MemoryError("could not copy record into the pileup buffer")
+    except BaseException as exc:
+        it.pending_exception = exc
+        return -2
+    return 0
+
+
+cdef int __advance_records(void *data, bam1_t *b) noexcept nogil:
+    '''advance callback for :class:`IteratorColumnRecords`, matching the
+    `bam_plp_auto_f` signature.
+
+    `cnext()` below never releases the GIL, so it is always already held
+    here; `with gil:` is a no-op reacquisition today, kept explicit
+    because pulling from the Python iterable genuinely needs it and
+    that would stop being true silently if `cnext()` ever changed.
+    '''
+    with gil:
+        return __advance_records_gil(data, b)
+
+
+cdef class IteratorColumnRecords:
+    '''Iterator over columns when given a collection of :class:`~pysam.AlignedSegment`s.
+
+       For reasons of efficiency, the iterator requires the given
+       :class:`~pysam.AlignedSegment`s to be in coordinate sorted order.
+       Records are pulled from `recs` lazily, only as needed to resolve
+       each :class:`~pysam.PileupColumn`, so `recs` may be a generator
+       that reads from a file or produces records on demand.
+
+       For example:
+
+          f = AlignmentFile("file.bam", "rb")
+          result = list(IteratorColumnRecords(f))
+
+       Here, ``result`` will be a list of ``n`` lists of objects of type
+       :class:`~pysam.PileupRead`.
+
+       If the iterator is associated with a :class:`~pysam.Fastafile`
+       using the :meth:`add_reference` method, then the iterator will
+       export the current sequence via the methods :meth:`get_sequence`
+       and :meth:`seq_len`.
+
+       Accepts the keyword arguments ``fastafile`` (a :class:`~pysam.FastaFile`,
+       equivalent to calling :meth:`add_reference`), ``min_base_quality``
+       (default 13), ``max_depth``, and ``ignore_overlaps``; see
+       :class:`~AlignmentFile.pileup` for the meaning of all three. As in
+       :meth:`AlignmentFile.pileup`, a falsy ``max_depth`` (the default,
+       0) leaves htslib's own built-in depth limit of 8000 in effect
+       rather than removing the limit entirely. Any other keyword
+       argument raises ``TypeError``.
+
+       .. note::
+
+          This iterator pulls records lazily from `recs` through the
+          same callback-based pileup engine (``bam_mplp_init()`` /
+          ``bam_mplp64_auto()``) that :meth:`AlignmentFile.pileup` uses
+          internally, which is how ``max_depth`` and ``ignore_overlaps``
+          are supported. It does not, however, replicate the rest of
+          :meth:`AlignmentFile.pileup`'s ``stepper="samtools"`` read
+          processing (BAQ computation, mapping quality adjustment). If
+          you filter records yourself before passing them to this
+          iterator (by flag, mapping quality, etc.), the resulting
+          pileup may therefore differ slightly from equivalent
+          ``samtools mpileup`` output even with identical filtering
+          criteria. For exact ``samtools mpileup`` compatibility, use
+          :meth:`AlignmentFile.pileup` with ``stepper="samtools"``
+          instead of manually filtering and using this iterator.
+
+          This iterator is best suited for applying custom filtering not
+          available in the standard pileup, or combining records from
+          multiple sources.
+
+       '''
+
+    def __cinit__(self, recs: Iterable[AlignedSegment], **kwargs):
+        unsupported = set(kwargs) - {"fastafile", "min_base_quality", "max_depth", "ignore_overlaps"}
+        if unsupported:
+            raise TypeError(
+                "IteratorColumnRecords() got unexpected keyword argument(s): {}".format(
+                    ", ".join(sorted(unsupported))))
+        cdef FastaFile fastafile = kwargs.get("fastafile", None)
+        if fastafile is None:
+            self.fastafile = NULL
+        else:
+            self.fastafile = fastafile.fastafile
+        self.min_base_quality = kwargs.get("min_base_quality", 13)
+        cdef int max_depth = kwargs.get("max_depth", 0)
+        cdef bint ignore_overlaps = kwargs.get("ignore_overlaps", True)
+        self.seq_tid = -1
+        self.header = None
+        self.recs_iter = iter(recs)
+        self.pending_exception = None
+
+        cdef void *data[1]
+        data[0] = <void*>self
+        cdef int ret
+        self.pileup_iter = bam_mplp_init(1, <bam_plp_auto_f>__advance_records, data)
+        if self.pileup_iter == NULL:
+            raise MemoryError("could not allocate pileup iterator")
+        if max_depth:
+            with nogil:
+                bam_mplp_set_maxcnt(self.pileup_iter, max_depth)
+        if ignore_overlaps:
+            with nogil:
+                ret = bam_mplp_init_overlaps(self.pileup_iter)
+            if ret < 0:
+                raise MemoryError("could not initialize overlap detection")
+
+    def __dealloc__(self):
+        if self.pileup_iter != <bam_mplp_t>NULL:
+            bam_mplp_destroy(self.pileup_iter)
+            self.pileup_iter = <bam_mplp_t>NULL
+        # null plp so PileupColumn's NULL check detects a stale column, as in IteratorColumn
+        self.plp = <const bam_pileup1_t*>NULL
+        if self.seq != NULL:
+            free(self.seq)
+            self.seq = NULL
+
+    def __iter__(self):
+        return self
+
+    cdef int cnext(self):
+        '''perform next iteration.
+        '''
+        # do not release gil here: __advance_records needs it to pull from
+        # the Python iterable
+        return bam_mplp64_auto(self.pileup_iter,
+                               &self.tid,
+                               &self.pos,
+                               &self.n_plp,
+                               &self.plp)
+
+    def __next__(self):
+        cdef int n
+        cdef int tid
+        n = self.cnext()
+        if self.pending_exception is not None:
+            exc = self.pending_exception
+            self.pending_exception = None
+            raise exc
+        if n < 0:
+            raise ValueError("error during iteration")
+        if n == 0:
+            raise StopIteration
+
+        # reload sequence
+        if self.fastafile != NULL and self.seq_tid != self.tid:
+            if self.seq != NULL:
+                free(self.seq)
+                self.seq = NULL
+            self.seq_tid = self.tid
+            tid = self.tid
+            assert self.header is not None
+            with nogil:
+                self.seq = faidx_fetch_seq64(
+                    self.fastafile,
+                    self.header.ptr.target_name[tid],
+                    0, MAX_POS,
+                    &self._seq_len)
+
+            if self.seq == NULL:
+                raise ValueError(
+                    "reference sequence for '{}' (tid={}) not found".format(
+                        self.header.target_name[self.tid], self.tid))
+
+        return makePileupColumn(&self.plp,
+                                self.tid,
+                                self.pos,
+                                self.n_plp,
+                                self.min_base_quality,
+                                self.seq,
+                                self.header,
+                                self)
+
+    cdef char * get_sequence(self):
+        '''return current reference sequence underlying the iterator.
+        '''
+        return self.seq
+
+    property seq_len:
+        '''current sequence length.'''
+        def __get__(self):
+            return self._seq_len
+
+    def add_reference(self, FastaFile fastafile):
+        '''add reference sequences in `fastafile` to iterator.'''
+        self.fastafile = fastafile.fastafile
+        if self.seq != NULL:
+            free(self.seq)
+            self.seq = NULL
+        self._seq_len = 0
+        self.seq_tid = -1
+
+    def has_reference(self):
+        '''
+        return true if iterator is associated with a reference'''
+        return self.fastafile != NULL
 
 
 cdef class SNPCall:

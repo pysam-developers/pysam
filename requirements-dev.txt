@@ -1,1 +1,2 @@
 Cython>=3,<4
+parameterized>=0.9.0,<1
