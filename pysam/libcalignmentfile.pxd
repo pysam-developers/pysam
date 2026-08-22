@@ -146,7 +146,7 @@ cdef class IteratorColumnAll(IteratorColumn):
 
 cdef class IteratorColumnRecords:
     cdef int cnext(self)
-    cdef bam_plp_t plp_iter
+    cdef bam_mplp_t pileup_iter
     cdef int tid
     cdef hts_pos_t pos
     cdef int n_plp
@@ -157,6 +157,8 @@ cdef class IteratorColumnRecords:
     cdef hts_pos_t _seq_len
     cdef int seq_tid
     cdef faidx_t * fastafile
+    cdef object recs_iter
+    cdef object pending_exception
     cdef char * get_sequence(self)
 
 

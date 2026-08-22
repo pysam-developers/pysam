@@ -520,37 +520,135 @@ class TestIteratorColumnRecords:
             assert all(hi <= lo for hi, lo in zip(depths_high_qual, depths_default))
             assert any(hi < lo for hi, lo in zip(depths_high_qual, depths_default))
 
-    def test_unsupported_keyword_arguments_are_rejected(self):
-        """Test unsupported keyword arguments raise TypeError instead of being silently ignored.
+    def test_max_depth_parameter(self):
+        """Test max_depth parameter reduces reported depth.
 
-        max_depth and ignore_overlaps are AlignmentFile.pileup() kwargs that
-        IteratorColumnRecords cannot honor: htslib only enforces them on
-        records as they are added, but this iterator pushes all of its
-        records up front, before any are inspected. Silently accepting
-        (and ignoring) them would misinform callers who expect them to
-        take effect, so they must be rejected instead.
+        Note: like AlignmentFile.pileup()'s own max_depth, this is htslib's
+        longstanding rate-limiting behavior on newly-added reads, not a
+        strict per-position cap, so depth can still exceed max_depth.
         """
+        from pysam.libcalignmentfile import IteratorColumnRecords
+
+        with pysam.AlignmentFile(self.fn) as inf:
+            records = [rec for rec in inf][:100]
+
+            depths_unlimited = [col.get_num_aligned() for col in IteratorColumnRecords(records)]
+            depths_capped = [
+                col.get_num_aligned()
+                for col in IteratorColumnRecords(records, max_depth=5)
+            ]
+
+            # Both should produce the same number of positions
+            assert len(depths_unlimited) == len(depths_capped)
+
+            assert all(hi <= lo for hi, lo in zip(depths_capped, depths_unlimited))
+            assert any(hi < lo for hi, lo in zip(depths_capped, depths_unlimited))
+
+    def test_max_depth_zero_means_unlimited(self):
+        """Test max_depth=0 is treated as "no limit", matching AlignmentFile.pileup()."""
+        from pysam.libcalignmentfile import IteratorColumnRecords
+
+        with pysam.AlignmentFile(self.fn) as inf:
+            records = [rec for rec in inf][:100]
+
+            depths_unlimited = [col.get_num_aligned() for col in IteratorColumnRecords(records)]
+            depths_zero = [
+                col.get_num_aligned()
+                for col in IteratorColumnRecords(records, max_depth=0)
+            ]
+            assert depths_unlimited == depths_zero
+
+    def test_unsupported_keyword_arguments_are_rejected(self):
+        """Test unsupported keyword arguments raise TypeError instead of being silently ignored."""
         from pysam.libcalignmentfile import IteratorColumnRecords
 
         with pysam.AlignmentFile(self.fn) as inf:
             records = [rec for rec in inf][:10]
 
             for kwargs in (
-                {"max_depth": 5},
-                {"ignore_overlaps": False},
+                {"stepper": "samtools"},
                 {"not_a_real_argument": 1},
             ):
                 with pytest.raises(TypeError):
                     IteratorColumnRecords(records, **kwargs)
 
+    def _build_overlapping_mate_pair(self):
+        """build two synthetic mates overlapping at a single reference position.
+
+        Both mates' original base qualities (20 and 15) are above the
+        default min_base_quality (13), so any difference in
+        get_num_aligned() at the overlap is attributable only to
+        ignore_overlaps' quality-zeroing, not to min_base_quality
+        filtering that would apply regardless.
+        """
+        header = pysam.AlignmentHeader.from_references(["chr1"], [1000])
+
+        mate1 = pysam.AlignedSegment(header)
+        mate1.query_name = "overlapping_pair"
+        mate1.query_sequence = "A"
+        mate1.query_qualities = [20]
+        mate1.flag = 99  # paired, proper pair, mate reverse, first in pair
+        mate1.reference_id = 0
+        mate1.reference_start = 10
+        mate1.mapping_quality = 60
+        mate1.cigartuples = [(0, 1)]
+        mate1.next_reference_id = 0
+        mate1.next_reference_start = 10
+        mate1.template_length = 1
+
+        mate2 = pysam.AlignedSegment(header)
+        mate2.query_name = "overlapping_pair"
+        mate2.query_sequence = "A"
+        mate2.query_qualities = [15]
+        mate2.flag = 147  # paired, proper pair, reverse, second in pair
+        mate2.reference_id = 0
+        mate2.reference_start = 10
+        mate2.mapping_quality = 60
+        mate2.cigartuples = [(0, 1)]
+        mate2.next_reference_id = 0
+        mate2.next_reference_start = 10
+        mate2.template_length = -1
+
+        return [mate1, mate2]
+
+    def test_ignore_overlaps_parameter(self):
+        """Test ignore_overlaps controls overlap detection, matching AlignmentFile.pileup().
+
+        With ignore_overlaps=True (the default, matching
+        AlignmentFile.pileup()), htslib zeroes the base quality of the
+        lower-quality mate at the overlapping position, dropping it
+        below min_base_quality and out of the count. With
+        ignore_overlaps=False, both mates' original qualities are left
+        intact.
+
+        Note: as with AlignmentFile.pileup(), a PileupColumn is a view
+        onto its iterator's own buffer, so it must be inspected while
+        the iterator that produced it is still alive (here, inside the
+        list comprehension) rather than after the fact.
+        """
+        from pysam.libcalignmentfile import IteratorColumnRecords
+
+        records = self._build_overlapping_mate_pair()
+
+        depths_default = [
+            col.get_num_aligned() for col in IteratorColumnRecords(records)
+        ]
+        depths_no_overlap_detection = [
+            col.get_num_aligned()
+            for col in IteratorColumnRecords(records, ignore_overlaps=False)
+        ]
+
+        assert depths_default == [1]
+        assert depths_no_overlap_detection == [2]
+
     def test_construction_failure_does_not_crash(self):
         """Test a failed construction is cleaned up safely instead of segfaulting.
 
         Regression test: __cinit__ can raise (e.g. for a bad fastafile type,
-        or an unsupported keyword argument) before bam_plp_init() has run,
-        leaving self.plp_iter NULL. __dealloc__ must not blindly pass that
-        NULL pointer to bam_plp_destroy(), which does not itself guard
-        against NULL and previously segfaulted the whole process.
+        or an unsupported keyword argument) before bam_mplp_init() has run,
+        leaving self.pileup_iter NULL. __dealloc__ must not blindly pass
+        that NULL pointer to bam_mplp_destroy(), which does not itself
+        guard against NULL and previously segfaulted the whole process.
         """
         from pysam.libcalignmentfile import IteratorColumnRecords
 
@@ -571,8 +669,10 @@ class TestIteratorColumnRecords:
             records = [rec for rec in inf][:5]
         records.reverse()
 
+        # Records are pulled lazily, so construction alone cannot fail;
+        # the error only surfaces once iteration forces them to be pushed.
         with pytest.raises(ValueError):
-            IteratorColumnRecords(records)
+            list(IteratorColumnRecords(records))
 
     def test_empty_records(self):
         """Test with empty record list."""
@@ -671,23 +771,37 @@ class TestIteratorColumnRecords:
             with pytest.raises(StopIteration):
                 next(iter_col)
 
-    def test_records_consumed_at_init(self):
-        """Test that all records are consumed during initialization."""
+    def test_records_are_consumed_lazily(self):
+        """Test records are pulled from `recs` only as iteration requires them.
+
+        Unlike AlignmentFile.pileup()'s IteratorColumn family, which reads
+        directly from an open file, IteratorColumnRecords is handed a plain
+        iterable and has no way to know how much of it a caller actually
+        wants; consuming eagerly would defeat the point of accepting a
+        generator (e.g. one reading a file too large to hold in memory).
+        """
         from pysam.libcalignmentfile import IteratorColumnRecords
 
         with pysam.AlignmentFile(self.fn) as inf:
-            # Use a generator to track consumption
+            total = 200
             consumed = []
 
             def record_gen():
                 for rec in inf:
                     consumed.append(rec)
                     yield rec
-                    if len(consumed) >= 50:
+                    if len(consumed) >= total:
                         break
 
-            # Creating the iterator should consume all records
             iter_col = IteratorColumnRecords(record_gen())
 
-            # Records should be consumed even before iteration
-            assert len(consumed) == 50
+            # Construction must not have touched the generator at all.
+            assert len(consumed) == 0
+
+            # A single produced column only requires part of the input.
+            next(iter_col)
+            assert 0 < len(consumed) < total
+
+            # Draining the iterator consumes the rest of the input.
+            list(iter_col)
+            assert len(consumed) == total

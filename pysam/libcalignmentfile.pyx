@@ -2788,18 +2788,62 @@ cdef class IteratorColumnAll(IteratorColumn):
                                 self.samfile.header)
 
 
+cdef int __advance_records_gil(void *data, bam1_t *b):
+    '''do the actual work of `__advance_records`; always called with the
+    GIL held, so it is free to use Python objects.
+
+    Pulls the next :class:`~pysam.AlignedSegment` from the Python
+    iterable supplied at construction and copies it into `b`. This lets
+    htslib's own ``bam_mplp64_auto()`` pull input lazily, one record at a
+    time, only as needed to resolve each column, rather than requiring
+    every record be pushed up front.
+
+    A Python exception raised while pulling a record (anything other
+    than the iterable's own exhaustion) cannot propagate through the
+    nogil C callback boundary in `__advance_records`, so it is stashed
+    on `it.pending_exception` and re-raised by
+    :meth:`IteratorColumnRecords.__next__` once control returns to
+    Python.
+    '''
+    cdef IteratorColumnRecords it = <IteratorColumnRecords>data
+    try:
+        rec = next(it.recs_iter)
+    except StopIteration:
+        return -1
+    except BaseException as exc:
+        it.pending_exception = exc
+        return -2
+    if it.header is None:
+        it.header = rec.header
+    if bam_copy1(b, (<AlignedSegment>rec)._delegate) == NULL:
+        it.pending_exception = MemoryError("could not copy record into the pileup buffer")
+        return -2
+    return 0
+
+
+cdef int __advance_records(void *data, bam1_t *b) noexcept nogil:
+    '''advance callback for :class:`IteratorColumnRecords`, matching the
+    `bam_plp_auto_f` signature. Reacquires the GIL to run
+    `__advance_records_gil`, since pulling from the Python iterable
+    requires it.
+    '''
+    with gil:
+        return __advance_records_gil(data, b)
+
+
 cdef class IteratorColumnRecords:
     '''Iterator over columns when given a collection of :class:`~pysam.AlignedSegment`s.
 
        For reasons of efficiency, the iterator requires the given
        :class:`~pysam.AlignedSegment`s to be in coordinate sorted order.
-       For implementation simplicity, all the records will be consumed
-       from the given iterator.
+       Records are pulled from `recs` lazily, only as needed to resolve
+       each :class:`~pysam.PileupColumn`, so `recs` may be a generator
+       that reads from a file or produces records on demand.
 
        For example:
 
           f = AlignmentFile("file.bam", "rb")
-          result = list(IteratorColumnRecords([rec for rec in f]))
+          result = list(IteratorColumnRecords(f))
 
        Here, ``result`` will be a list of ``n`` lists of objects of type
        :class:`~pysam.PileupRead`.
@@ -2810,38 +2854,39 @@ cdef class IteratorColumnRecords:
        and :meth:`seq_len`.
 
        Accepts the keyword arguments ``fastafile`` (a :class:`~pysam.FastaFile`,
-       equivalent to calling :meth:`add_reference`) and ``min_base_quality``
-       (default 13); see :class:`~AlignmentFile.pileup` for the meaning of
-       the latter. Any other keyword argument raises ``TypeError``. Unlike
-       :class:`~AlignmentFile.pileup`, ``max_depth`` and ``ignore_overlaps``
-       are not supported: htslib only enforces both on records added as it
-       consumes them, but this iterator pushes all of its records up front
-       in one batch, before any are inspected.
+       equivalent to calling :meth:`add_reference`), ``min_base_quality``
+       (default 13), ``max_depth``, and ``ignore_overlaps``; see
+       :class:`~AlignmentFile.pileup` for the meaning of all three. As in
+       :meth:`AlignmentFile.pileup`, a falsy ``max_depth`` (the default,
+       0) leaves htslib's own built-in depth limit of 8000 in effect
+       rather than removing the limit entirely. Any other keyword
+       argument raises ``TypeError``.
 
        .. note::
 
-          This iterator uses a push-based approach, adding records via
-          ``bam_plp_push()``. This differs from :meth:`AlignmentFile.pileup`,
-          which pulls records through htslib's callback-based filtering
-          pipeline. If you filter records yourself before passing them to
-          this iterator (by flag, mapping quality, etc.), the resulting
-          pileup may differ slightly from equivalent ``samtools mpileup``
-          output even with identical filtering criteria, because the
-          standard pileup pipeline also applies BAQ computation, mapping
-          quality adjustment, overlap handling, and filters at different
-          points during iteration. For exact ``samtools mpileup``
-          compatibility, use :meth:`AlignmentFile.pileup` with
-          ``stepper="samtools"`` instead of manually filtering and using
-          this iterator.
+          This iterator pulls records lazily from `recs` through the
+          same callback-based pileup engine (``bam_mplp_init()`` /
+          ``bam_mplp64_auto()``) that :meth:`AlignmentFile.pileup` uses
+          internally, which is how ``max_depth`` and ``ignore_overlaps``
+          are supported. It does not, however, replicate the rest of
+          :meth:`AlignmentFile.pileup`'s ``stepper="samtools"`` read
+          processing (BAQ computation, mapping quality adjustment). If
+          you filter records yourself before passing them to this
+          iterator (by flag, mapping quality, etc.), the resulting
+          pileup may therefore differ slightly from equivalent
+          ``samtools mpileup`` output even with identical filtering
+          criteria. For exact ``samtools mpileup`` compatibility, use
+          :meth:`AlignmentFile.pileup` with ``stepper="samtools"``
+          instead of manually filtering and using this iterator.
 
-          This iterator is best suited for building pileups from records
-          already in memory, applying custom filtering not available in
-          the standard pileup, or combining records from multiple sources.
+          This iterator is best suited for applying custom filtering not
+          available in the standard pileup, or combining records from
+          multiple sources.
 
        '''
 
     def __cinit__(self, recs: Iterable[AlignedSegment], **kwargs):
-        unsupported = set(kwargs) - {"fastafile", "min_base_quality"}
+        unsupported = set(kwargs) - {"fastafile", "min_base_quality", "max_depth", "ignore_overlaps"}
         if unsupported:
             raise TypeError(
                 "IteratorColumnRecords() got unexpected keyword argument(s): {}".format(
@@ -2852,25 +2897,32 @@ cdef class IteratorColumnRecords:
         else:
             self.fastafile = fastafile.fastafile
         self.min_base_quality = kwargs.get("min_base_quality", 13)
+        cdef int max_depth = kwargs.get("max_depth", 0)
+        cdef bint ignore_overlaps = kwargs.get("ignore_overlaps", True)
         self.seq_tid = -1
-        self.plp_iter = <bam_plp_t>bam_plp_init(NULL, NULL)
-        if self.plp_iter == NULL:
+        self.header = None
+        self.recs_iter = iter(recs)
+        self.pending_exception = None
+
+        cdef void *data[1]
+        data[0] = <void*>self
+        cdef int ret
+        self.pileup_iter = bam_mplp_init(1, <bam_plp_auto_f>__advance_records, data)
+        if self.pileup_iter == NULL:
             raise MemoryError("could not allocate pileup iterator")
-        rec: AlignedSegment
-        self.header: Optional[AlignmentHeader] = None
-        for rec in recs:
-            if self.header is None:
-                self.header = rec.header
-            if bam_plp_push(self.plp_iter, rec._delegate) != 0:
-                raise ValueError("could not add record to the iterator: {}".format(str(rec)))
-        # Signal end of input
-        if bam_plp_push(self.plp_iter, NULL) != 0:
-            raise ValueError("could not finalize the iterator")
+        if max_depth:
+            with nogil:
+                bam_mplp_set_maxcnt(self.pileup_iter, max_depth)
+        if ignore_overlaps:
+            with nogil:
+                ret = bam_mplp_init_overlaps(self.pileup_iter)
+            if ret < 0:
+                raise MemoryError("could not initialize overlap detection")
 
     def __dealloc__(self):
-        if self.plp_iter != <bam_plp_t>NULL:
-            bam_plp_destroy(self.plp_iter)
-            self.plp_iter = <bam_plp_t>NULL
+        if self.pileup_iter != <bam_mplp_t>NULL:
+            bam_mplp_destroy(self.pileup_iter)
+            self.pileup_iter = <bam_mplp_t>NULL
         if self.seq != NULL:
             free(self.seq)
             self.seq = NULL
@@ -2881,19 +2933,23 @@ cdef class IteratorColumnRecords:
     cdef int cnext(self):
         '''perform next iteration.
         '''
-        self.plp = <bam_pileup1_t*>bam_plp64_next(self.plp_iter,
-                                                  &self.tid,
-                                                  &self.pos,
-                                                  &self.n_plp)
-        if self.plp == NULL:
-            return 0
-        else:
-            return 1
+        # do not release gil here: __advance_records reacquires it internally
+        return bam_mplp64_auto(self.pileup_iter,
+                               &self.tid,
+                               &self.pos,
+                               &self.n_plp,
+                               &self.plp)
 
     def __next__(self):
         cdef int n
         cdef int tid
         n = self.cnext()
+        if self.pending_exception is not None:
+            exc = self.pending_exception
+            self.pending_exception = None
+            raise exc
+        if n < 0:
+            raise ValueError("error during iteration")
         if n == 0:
             raise StopIteration
 
