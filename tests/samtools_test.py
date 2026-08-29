@@ -354,10 +354,11 @@ class TestBcftoolsOutput:
         output = tmp_path / "normalized.vcf"
 
         expected = pysam.bcftools.norm(
-            "-Ov", "-f", str(reference), str(compressed_vcf), raw=True
+            "-Ov", "--no-version", "-f", str(reference), str(compressed_vcf), raw=True
         )
         returned = pysam.bcftools.norm(
             "-Ov",
+            "--no-version",
             output_option,
             str(output),
             "-f",
@@ -377,6 +378,7 @@ class TestBcftoolsOutput:
 
         pysam.bcftools.norm(
             "-Ov",
+            "--no-version",
             f"--output={output}",
             "-f",
             str(reference),
