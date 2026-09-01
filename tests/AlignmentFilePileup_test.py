@@ -1,7 +1,6 @@
 """Benchmarking module for AlignmentFile functionality"""
 import os
 import pysam
-import sys
 import pytest
 
 from TestUtils import make_data_files, BAM_DATADIR, force_str, flatten_nested_list
@@ -174,11 +173,13 @@ class TestPileupObjects:
     def teardown_method(self):
         self.samfile.close()
 
-    @pytest.mark.skipif(sys.version_info[:2] == (3, 11) or sys.platform.startswith("netbsd"),
-                        reason="exercises invalid accesses, which crashes on Python 3.11 and NetBSD")
     def testIteratorOutOfScope(self):
         '''test if exception is raised if pileup col is accessed after
-        iterator is exhausted.'''
+        iterator is exhausted.
+
+        see issue 1151: used to crash instead of raising, depending on
+        platform/Python version.
+        '''
 
         max_n = 0
         for pileupcol in self.samfile.pileup():
@@ -193,6 +194,36 @@ class TestPileupObjects:
         with pytest.raises(ValueError): max_col.get_mapping_qualities()
         with pytest.raises(ValueError): max_col.get_query_positions()
         with pytest.raises(ValueError): max_col.get_query_names()
+
+    def testColumnFromExhaustedIteratorAfterAnotherIteratorRuns(self):
+        '''see issue 1151: columns from one exhausted pileup() call,
+        accessed only after a second, independent pileup() call has
+        also run to completion.
+        '''
+        cols_a = list(self.samfile.pileup())
+        with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex1.bam"), "rb") as samfile2:
+            cols_b = list(samfile2.pileup())
+
+        for col in (cols_a[-1], cols_b[-1]):
+            with pytest.raises(ValueError):
+                col.get_num_aligned()
+
+    def testColumnFromExhaustedUnindexedIterator(self, tmp_path):
+        '''see issue 1151: an unindexed file uses IteratorColumnAll
+        rather than IteratorColumnAllRefs, with the same gap.
+        '''
+        unindexed = tmp_path / "unindexed.bam"
+        with pysam.AlignmentFile(self.samfile.filename) as src, \
+                pysam.AlignmentFile(str(unindexed), "wb", template=src) as dst:
+            for read in src:
+                dst.write(read)
+
+        with pysam.AlignmentFile(str(unindexed)) as inf:
+            assert not inf.has_index()
+            columns = list(inf.pileup())
+
+        with pytest.raises(ValueError):
+            columns[-1].get_num_aligned()
 
 
 class TestIteratorColumnBAM:
@@ -295,14 +326,20 @@ class TestIteratorColumn2:
         assert len(columns) == 3
         assert columns == [169, 170, 171]
 
-    @pytest.mark.skipif(sys.platform.startswith("netbsd"), reason="exercises invalid accesses, crashing on NetBSD")
     def testAccessOnClosedIterator(self):
-        '''see issue 131
+        '''see issue 131 and issue 1151
 
         Accessing pileup data after iterator has closed.
         '''
         pcolumn = self.samfile.pileup('chr1', 170, 180).__next__()
-        with pytest.raises(ValueError): pcolumn.pileups
+        n = pcolumn.n
+        assert len(pcolumn.pileups) == n
+        assert pcolumn.get_num_aligned() == n
+        assert len(pcolumn.get_query_sequences()) == n
+        assert len(pcolumn.get_query_qualities()) == n
+        assert len(pcolumn.get_mapping_qualities()) == n
+        assert len(pcolumn.get_query_positions()) == n
+        assert len(pcolumn.get_query_names()) == n
 
     def testStr(self):
         '''test if PileupRead can be printed.'''
