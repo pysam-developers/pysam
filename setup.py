@@ -515,6 +515,7 @@ htslib_configure_options = None
 
 define_macros = []
 dynamic_files = []
+extra_compile_args = []
 
 if HTSLIB_MODE in ['shared', 'separate']:
     package_list += ['pysam.include.htslib',
@@ -551,6 +552,9 @@ if HTSLIB_MODE in ['shared', 'separate']:
             [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
 
     for_redistribution = truthy(os.environ.get("CIBUILDWHEEL", "0"))
+
+    if for_redistribution:
+        extra_compile_args.append("-g0")  # Omit all debugging symbols
 
     if sys.platform == "linux" and "curl" in external_htslib_libraries and for_redistribution:
         dynamic_files.append("pysam/dynamic_libs.c")
@@ -630,7 +634,6 @@ for fn in config_headers:
 if platform.system() == 'Windows':
     include_os = ['win32']
     os_c_files = ['win32/getopt.c']
-    extra_compile_args = []
 else:
     include_os = []
     os_c_files = []
@@ -638,11 +641,12 @@ else:
     # http://stackoverflow.com/questions/25587039/
     # error-compiling-rpy2-on-python3-4-due-to-werror-
     # declaration-after-statement
-    extra_compile_args = [
+    extra_compile_args.extend([
         "-Wno-unused",
         "-Wno-strict-prototypes",
         "-Wno-sign-compare",
-        "-Wno-error=declaration-after-statement"]
+        "-Wno-error=declaration-after-statement",
+    ])
 
 suffix = sysconfig.get_config_var('EXT_SUFFIX')
 
