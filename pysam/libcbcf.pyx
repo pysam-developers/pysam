@@ -237,10 +237,13 @@ cdef inline int is_gt_fmt(bcf_hdr_t *hdr, int fmt_id):
     return strcmp(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt_id), 'GT') == 0
 
 
-cdef inline int bcf_genotype_count(bcf_hdr_t *hdr, bcf1_t *rec, int sample) except -1:
-
+cdef int bcf_ploidy(const bcf_hdr_t *hdr, bcf1_t *rec, const char *number, int sample) except -1:
     if sample < 0:
-        raise ValueError('genotype is only valid as a format field')
+        if number:
+            number_s = number.decode("ascii")
+            raise ValueError(f"Number={number_s} is only valid as a FORMAT field")
+        else:
+            raise ValueError("Genotype is only valid as a FORMAT field")
 
     cdef int32_t *gt_arr = NULL
     cdef int ngt = 0
@@ -260,7 +263,34 @@ cdef inline int bcf_genotype_count(bcf_hdr_t *hdr, bcf1_t *rec, int sample) exce
 
     free(<void*>gt_arr)
 
-    return bcf_geno_combinations(ploidy, rec.n_allele)
+    return ploidy
+
+
+cdef int bcf_LAA_count(const bcf_hdr_t *hdr, bcf1_t *rec, const char *number, int sample) except -1:
+    if sample < 0:
+        number_s = number.decode("ascii")
+        raise ValueError(f"Number={number_s} is only valid as a FORMAT field")
+
+    cdef int32_t *laa_array = NULL
+    cdef int laa_size = 0
+    cdef int nlaa = bcf_get_format_int32(hdr, rec, b"LAA", &laa_array, &laa_size)
+    if nlaa < 0:
+        if nlaa == -1 or nlaa == -3: raise ValueError("Record does not contain a LAA field")
+        elif nlaa == -2: raise ValueError("LAA field is not Type=Integer")
+        elif nlaa == -4: raise MemoryError("Could not allocate memory for LAA array")
+        else: raise ValueError(f"Could not get LAA field ({nlaa})")
+
+    cdef int num_laa_vals = nlaa // rec.n_sample
+    cdef int32_t *laa = &laa_array[sample * num_laa_vals]
+
+    cdef int j, count = 0
+    for j in range(num_laa_vals):
+        if laa[j] == bcf_int32_vector_end or laa[j] == bcf_int32_missing:
+            break
+        count += 1
+
+    free(laa_array)
+    return count
 
 
 cdef tuple char_array_to_tuple(const char **a, ssize_t n, int free_after=0):
@@ -523,9 +553,19 @@ cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, ssize_t *cou
     elif length == BCF_VL_A:
         count[0] = r.n_allele - 1
     elif length == BCF_VL_G:
-        count[0] = bcf_genotype_count(hdr, r, sample)
+        count[0] = bcf_geno_combinations(bcf_ploidy(hdr, r, "G", sample), r.n_allele)
+    elif length == BCF_VL_P:
+        count[0] = bcf_ploidy(hdr, r, "P", sample)
     elif length == BCF_VL_VAR:
         count[0] = -1
+    elif length == BCF_VL_LR:
+        count[0] = bcf_LAA_count(hdr, r, "LR", sample) + 1
+    elif length == BCF_VL_LA:
+        count[0] = bcf_LAA_count(hdr, r, "LA", sample)
+    elif length == BCF_VL_LG:
+        count[0] = bcf_geno_combinations(bcf_ploidy(hdr, r, "LG", sample), bcf_LAA_count(hdr, r, "LG", sample) + 1)
+    elif length == BCF_VL_M:
+        count[0] = -1  # TODO Compute the expected length for M{chebi}[ACGTUN] et al
     else:
         raise ValueError('Unknown format length')
 

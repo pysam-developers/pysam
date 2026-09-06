@@ -159,3 +159,36 @@ def test_repeated_new_record(vcf_header):
     assert '\tGT:' in str(record2)  # Verify that GT is actually emitted and is output first
     assert record2.samples['sample1'].alleles == ('A', 'TCGA')
     assert record2.samples['sample2'].alleles == ('TCGA', 'A')
+
+
+def test_format_number_P(vcf_header):
+    vcf_header.formats.add("GT", 1, "String", "Genotype")
+    vcf_header.formats.add("X", "P", "Integer", "Per-genotype-allele value")
+
+    samples=[{"GT": (0, 1), "X": (20, 43)}, {"GT": (1,), "X": 37}]
+    rec = vcf_header.new_record(contig="1", start=10, alleles=["A", "T"], samples=samples)
+
+    assert rec.samples["sample1"]["X"] == (20, 43)
+    assert rec.samples["sample2"]["X"] == (37,)
+
+
+def test_format_number_LA_LR_LG(vcf_header):
+    vcf_header.formats.add("GT", 1, "String", "Genotype")
+    vcf_header.formats.add("LAA", ".", "Integer", "Local alleles")
+    vcf_header.formats.add("LAD", "LR", "Integer", "Local-allele representation of AD")
+    vcf_header.formats.add("LEC", "LA", "Integer", "Local EC")
+    vcf_header.formats.add("LPL", "LG", "Integer", "Local PL")
+
+    samples=[{"GT": (0, 1), "LAA": (1, 2),    "LAD": (50, 10, 20),     "LEC": (11, 21),     "LPL": (1,2,3,4,5,6)},
+             {"GT": (1,),   "LAA": (1, 3, 4), "LAD": (50, 10, 30, 40), "LEC": (11, 31, 41), "LPL": (1,2,3,4)}]
+    rec = vcf_header.new_record(contig="1", start=10, alleles=["A", "C", "G", "T"], samples=samples)
+
+    assert len(rec.samples["sample1"]["LAA"]) == 2
+    #assert rec.samples["sample1"]["LAD"] == (50, 10, 20)
+    #assert rec.samples["sample1"]["LEC"] == (11, 21)
+    assert rec.samples["sample1"]["LPL"] == (1,2,3,4,5,6)
+
+    assert len(rec.samples["sample2"]["LAA"]) == 3
+    assert rec.samples["sample2"]["LAD"] == (50, 10, 30, 40)
+    assert rec.samples["sample2"]["LEC"] == (11, 31, 41)
+    assert rec.samples["sample2"]["LPL"] == (1,2,3,4)
