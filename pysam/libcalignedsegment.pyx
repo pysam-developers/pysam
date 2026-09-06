@@ -55,7 +55,6 @@
 ###############################################################################
 import re
 import array
-import json
 import string
 import ctypes
 import struct
@@ -1162,7 +1161,7 @@ cdef class AlignedSegment:
         return self.to_string()
 
     def to_dict(self):
-        """returns a json representation of the aligned segment.
+        """returns a dictionary representation of the aligned segment.
 
         Field names are abbreviated versions of the class attributes.
         """
