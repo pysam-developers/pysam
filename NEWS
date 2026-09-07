@@ -1,6 +1,76 @@
 .. An online version of the release history can be found here:
 .. http://pysam.readthedocs.io/en/latest/release.html
 
+Release 0.24.1
+==============
+
+.. rubric:: 7 September 2026
+
+This minor pysam release wraps htslib/samtools/bcftools version 1.24.
+
+It has been tested with Python versions 3.9 through 3.15 (RC2) and wheels are
+available via PyPI_ for all of those Python versions. Wheels are built for
+macOS and Linux (manylinux_2_28 and musllinux_1_2) on both ARM and x86-64.
+The final pysam release that supported Python 3.8 was v0.24.0.
+
+Starting from v0.24.0 pysam wraps htslib 1.22 or later, which contains
+significant CRAM-related operational changes that are inherited by pysam:
+the default output CRAM version is now 3.1 rather than 3.0; CRAM reference
+data is no longer fetched from EBI's server by default.
+
+Bugs fixed:
+
+* Fixed type hints for :class:`.VariantFile` to re-allow file descriptors
+  and file-like objects as "filenames" to be opened. (PR #1406, reported
+  by David Poznik)
+
+* Fixed :meth:`.AlignedSegment.get_aligned_pairs` type hints so that
+  omitted arguments also produce precise return types.
+  (PR #1371, reported by Gosuke Shibahara)
+
+* Optimized :attr:`.AlignedSegment.query_sequence` and
+  :attr:`.AlignedSegment.query_alignment_sequence`, resulting in
+  an approximately 3× speed improvement. (PR #1411)
+
+* Fixed :func:`.tabix_compress` error handling, which now raises an
+  exception when `filename_in` cannot be opened rather than treating
+  it as an empty file.
+
+* Reinstated S3 support in pre-built Linux wheels when used on Debian and
+  Ubuntu, which was broken in v0.24.0 due to pysam's CA Certificate location
+  workaround no longer being applied to S3 URLs. (PR #1420)
+
+* Pre-built PyPI Linux wheels now load networking libraries dynamically at
+  runtime when needed, rather than having copies of networking and security
+  libraries bundled within the wheel. (PR #1420; #1097, #1276, reported by
+  @MikeWazoWski123 and Scott Hazelhurst)
+
+* Cython and C source files, which have been inadvertently present in
+  binary wheels since v0.21.0, are now properly omitted again.
+
+New functionality:
+
+* New :func:`.reverse_complement` and :func:`.reverse_complement_inplace`
+  functions. (PR #1411)
+
+* :class:`.VariantRecordSample` now supports Number=P (VCF v4.4 or greater)
+  and Number=LA, LR, LG, and M (VCF v4.5). (#1419, reported by Chris Wright)
+
+* Pre-built PyPI wheels are no longer built with C debugging symbols, which are
+  largely unnecessary in a Python context. Due to this and the removal of most
+  Linux bundled libraries and the inadvertently added source code, pre-built
+  wheels are now much smaller, especially on Linux.
+
+* Pysam's test suite has been overhauled to be natively pytest-based. It now
+  uses tmp_path fixtures rather than its own ad hoc temporary file management
+  and mostly no longer makes network requests.
+
+Documentation improvements:
+
+* Added new :class:`.FastxRecord` documentation.
+  (PR #1245, thanks to Nils Homer)
+
+
 Release 0.24.0
 ==============
 
