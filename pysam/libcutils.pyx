@@ -32,6 +32,18 @@ from pysam.libcbcftools cimport bcftools_dispatch, bcftools_set_stdout, bcftools
 # hard-coded constants
 cdef int MAX_POS = (1 << 31) - 1
 
+
+def _has_explicit_output_option(args):
+    """Return whether command arguments already select an output path."""
+    for arg in args:
+        if arg in ("-o", "--output", "--output-file"):
+            return True
+        if arg.startswith("--output=") or arg.startswith("--output-file="):
+            return True
+        if arg.startswith("-o") and len(arg) > 2:
+            return True
+    return False
+
 #################################################################
 # Utility functions for quality string conversions
 cpdef c_array.array qualitystring_to_array(input_str, int offset=33):
@@ -376,7 +388,7 @@ def _pysam_dispatch(collection,
             if not(method == "view" and "-c" in args):
                 stdout_option = MAP_STDOUT_OPTIONS[collection][method]
 
-        if stdout_option is not None and not is_usage:
+        if stdout_option is not None and not is_usage and not _has_explicit_output_option(args):
             os.close(stdout_h)
             stdout_f_bytes = force_bytes(stdout_f)
             args.extend(stdout_option.format(stdout_f).split(" "))

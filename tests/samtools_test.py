@@ -329,6 +329,66 @@ class TestStdout:
         assert len(r) > 0
 
 
+class TestBcftoolsOutput:
+    @pytest.fixture
+    def norm_inputs(self, tmp_path):
+        reference = tmp_path / "reference.fa"
+        reference.write_text(">chr1\nAAAAAAAAAA\n")
+        pysam.faidx(str(reference))
+
+        vcf = tmp_path / "input.vcf"
+        vcf.write_text(
+            "##fileformat=VCFv4.2\n"
+            "##contig=<ID=chr1,length=10>\n"
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+            "chr1\t2\t.\tAA\tA\t.\tPASS\t.\n"
+        )
+        compressed_vcf = tmp_path / "input.vcf.gz"
+        pysam.tabix_compress(str(vcf), str(compressed_vcf))
+        pysam.tabix_index(str(compressed_vcf), preset="vcf")
+        return reference, compressed_vcf
+
+    @pytest.mark.parametrize("output_option", ["-o", "--output"])
+    def test_norm_honours_explicit_output_path(self, norm_inputs, tmp_path, output_option):
+        reference, compressed_vcf = norm_inputs
+        output = tmp_path / "normalized.vcf"
+
+        expected = pysam.bcftools.norm(
+            "-Ov", "--no-version", "-f", str(reference), str(compressed_vcf), raw=True
+        )
+        returned = pysam.bcftools.norm(
+            "-Ov",
+            "--no-version",
+            output_option,
+            str(output),
+            "-f",
+            str(reference),
+            str(compressed_vcf),
+            raw=True,
+        )
+
+        assert expected
+        assert returned in (None, "")
+        assert output.exists()
+        assert output.read_text() == expected
+
+    def test_norm_honours_equals_output_path(self, norm_inputs, tmp_path):
+        reference, compressed_vcf = norm_inputs
+        output = tmp_path / "normalized.vcf"
+
+        pysam.bcftools.norm(
+            "-Ov",
+            "--no-version",
+            f"--output={output}",
+            "-f",
+            str(reference),
+            str(compressed_vcf),
+            raw=True,
+        )
+
+        assert output.exists()
+
+
 class TestPysam(TestSamtools):
     """check access to samtools command in the pysam
     main package.
