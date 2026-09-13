@@ -65,8 +65,8 @@ import re
 import warnings
 import array
 from libc.errno  cimport errno, EPIPE
-from libc.string cimport strcmp, strpbrk
-from libc.stdint cimport INT32_MAX
+from libc.stdlib cimport calloc, free
+from libc.string cimport memcpy, strncpy
 
 from cpython cimport array as c_array
 
@@ -1552,7 +1552,7 @@ cdef class AlignmentFile(HTSFile):
         count_t = c_array.clone(int_array_template, length, zero=True)
 
         cdef AlignedSegment read
-        cdef cython.str seq
+        cdef str seq
         cdef c_array.array quality
         cdef int qpos
         cdef int refpos

@@ -2,7 +2,7 @@
 #########################################################################
 # Utility functions used across pysam
 #########################################################################
-cimport cython
+
 from cpython cimport array as c_array
 
 cpdef parse_region(contig=*, start=*, stop=*, region=*, reference=*, end=*)

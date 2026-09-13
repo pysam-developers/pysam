@@ -1,6 +1,5 @@
 # cython: language_level=3
 
-from libc.stdio cimport printf, feof, fgets
 from libc.string cimport strcpy, strlen, memcmp, memcpy, memchr, strstr, strchr
 from libc.stdlib cimport free, malloc, calloc, realloc
 from libc.stdlib cimport atoi, atol, atof

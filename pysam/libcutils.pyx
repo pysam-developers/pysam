@@ -17,8 +17,6 @@ from libc.errno cimport errno
 from libc.stdlib cimport calloc, free
 from libc.string cimport strerror, strncpy
 from libc.stdint cimport INT32_MAX, int32_t
-from libc.stdio cimport fprintf, stderr, fflush
-from libc.stdio cimport stdout as c_stdout
 from posix.fcntl cimport open as c_open, O_WRONLY, O_CREAT, O_TRUNC
 from posix.unistd cimport dup as c_dup, SEEK_SET, SEEK_CUR, SEEK_END, STDOUT_FILENO
 

@@ -50,6 +50,7 @@ import re
 
 
 from libc.errno  cimport errno
+from libc.stdlib cimport free
 from libc.string cimport strerror
 
 from cpython cimport array
@@ -387,7 +388,7 @@ cdef class FastqProxy:
             else:
                 return None
 
-    cdef cython.str to_string(self):
+    cdef str to_string(self):
         if self.comment is None:
             comment = ""
         else:
@@ -399,7 +400,7 @@ cdef class FastqProxy:
             return "@%s%s\n%s\n+\n%s" % (self.name, comment,
                                          self.sequence, self.quality)
 
-    cdef cython.str tostring(self):
+    cdef str tostring(self):
         """deprecated : use :meth:`to_string`"""
         return self.to_string()
 
@@ -472,7 +473,7 @@ cdef class FastxRecord:
     def __deepcopy__(self, memo):
         return FastxRecord(self.name, self.comment, self.sequence, self.quality)
 
-    cdef cython.str to_string(self):
+    cdef str to_string(self):
         if self.name is None:
             raise ValueError("can not write record without name")
 
@@ -490,7 +491,7 @@ cdef class FastxRecord:
             return "@%s%s\n%s\n+\n%s" % (self.name, comment,
                                          self.sequence, self.quality)
 
-    cdef cython.str tostring(self):
+    cdef str tostring(self):
         """deprecated : use :meth:`to_string`"""
         return self.to_string()
 

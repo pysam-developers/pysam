@@ -85,10 +85,9 @@ import os
 import sys
 
 from libc.errno  cimport errno, EPIPE
-from libc.string cimport strcmp, strpbrk, strerror
+from libc.stdlib cimport calloc, free
+from libc.string cimport memcpy, memmove, strcmp, strdup, strerror, strlen
 from libc.stdint cimport INT8_MAX, INT16_MAX, INT32_MAX
-
-cimport cython
 
 from cpython.object  cimport PyObject
 from cpython.ref     cimport Py_INCREF

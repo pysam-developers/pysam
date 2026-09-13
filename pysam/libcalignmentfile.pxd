@@ -1,15 +1,10 @@
 # cython: language_level=3
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
-from libc.stdlib cimport malloc, calloc, realloc, free
-from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
-from libc.stdio cimport FILE, printf
 
 from pysam.libcfaidx cimport faidx_t, FastaFile
 from pysam.libcalignedsegment cimport AlignedSegment
 from pysam.libchtslib cimport *
-
-cimport cython
 
 cdef extern from *:
     ctypedef char* const_char_ptr "const char*"

@@ -56,9 +56,9 @@
 import os
 import sys
 
-from libc.stdio cimport printf, fprintf, stderr
-from libc.string cimport strerror
 from libc.errno cimport errno
+from libc.stdlib cimport malloc, free
+from libc.string cimport strerror
 from posix.fcntl cimport open as c_open, O_RDONLY
 from posix.unistd cimport close, dup, read
 

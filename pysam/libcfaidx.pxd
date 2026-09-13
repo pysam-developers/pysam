@@ -1,10 +1,6 @@
 # cython: language_level=3
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
-from libc.stdlib cimport malloc, calloc, realloc, free
-from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
-from libc.stdio cimport FILE, printf
-cimport cython
 
 from cpython cimport array
 from pysam.libchtslib cimport faidx_t, kstring_t, BGZF
@@ -33,8 +29,8 @@ cdef class FastaFile:
 
 cdef class FastqProxy:
     cdef kseq_t * _delegate
-    cdef cython.str to_string(self)
-    cdef cython.str tostring(self)
+    cdef str to_string(self)
+    cdef str tostring(self)
     cpdef array.array get_quality_array(self, int offset=*)
 
 
@@ -52,8 +48,8 @@ cdef class FastxRecord:
     """str : The nucleotide or amino acid sequence."""
     cdef public str name
     """str : The name (identifier) of the record."""
-    cdef cython.str to_string(self)
-    cdef cython.str tostring(self)
+    cdef str to_string(self)
+    cdef str tostring(self)
     cpdef array.array get_quality_array(self, int offset=*)
 
 cdef class FastxFile:

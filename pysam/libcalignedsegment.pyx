@@ -59,16 +59,16 @@ import string
 import ctypes
 import struct
 
-cimport cython
 from cpython cimport array as c_array
 from cpython.bytearray cimport PyByteArray_FromStringAndSize, PyByteArray_GET_SIZE
 from cpython.bytes cimport PyBytes_FromStringAndSize
 from cpython.unicode cimport PyUnicode_DATA, PyUnicode_1BYTE_DATA, PyUnicode_1BYTE_KIND, \
     PyUnicode_GET_LENGTH, PyUnicode_KIND, PyUnicode_New, PyUnicode_WRITE
-from libc.string cimport memset, strchr
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
+from libc.stdlib cimport calloc, free
+from libc.string cimport memcmp, memcpy, memset, strchr, strncpy
 
 from pysam.libchtslib cimport HTS_IDX_NOCOOR
 from pysam.libcutils cimport PysamUnicode_NewCloneWithSize, force_bytes, force_str, \
