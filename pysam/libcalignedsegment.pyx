@@ -92,8 +92,8 @@ cdef char * parray_types = 'bBhHiIf'
 cdef char* CODE2CIGAR= "MIDNSHP=XB"
 cdef int NCIGAR_CODES = 10
 
-CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
-CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
+cdef CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
+cdef CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
 
 # names for keys in dictionary representation of an AlignedSegment
 KEY_NAMES = ["name", "flag", "ref_name", "ref_pos", "map_quality", "cigar",
@@ -399,7 +399,7 @@ cdef inline uint8_t get_btag_typecode(value, min_value=None, max_value=None):
 
 
 # mapping python array.array and htslib typecodes to struct typecodes
-DATATYPE2FORMAT = {
+cdef DATATYPE2FORMAT = {
     ord('c'): ('b', 1),
     ord('C'): ('B', 1),
     ord('s'): ('h', 2),

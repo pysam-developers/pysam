@@ -1,5 +1,4 @@
 import enum
-import re
 from array import array
 from typing import Any, List, Literal, Optional, Dict, Tuple, Union, overload
 
@@ -29,9 +28,6 @@ FQCFAIL: int
 FDUP: int
 FSUPPLEMENTARY: int
 
-CIGAR2CODE: Dict[int, str]
-CIGAR_REGEX: re.Pattern
-DATATYPE2FORMAT: Dict[int, Tuple[str, int]]
 KEY_NAMES: List[str]
 
 TagValue = Union[str, int, float, array]
