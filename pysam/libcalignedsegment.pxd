@@ -87,6 +87,10 @@ cdef class PileupColumn:
     cdef uint32_t min_base_quality
     cdef kstring_t buf
     cdef char * reference_sequence
+    # keeps the iterator that produced `plp`/`reference_sequence` alive for
+    # as long as this column is, since both are raw pointers into memory it
+    # owns rather than into memory owned by this column itself
+    cdef object owner
 
 cdef class PileupRead:
     cdef int32_t  _qpos
@@ -110,7 +114,8 @@ cdef PileupColumn makePileupColumn(
     int n_pu,
     uint32_t min_base_quality,
     char * reference_sequence,
-    AlignmentHeader header)
+    AlignmentHeader header,
+    object owner)
 
 cdef PileupRead makePileupRead(const bam_pileup1_t * src,
 		               AlignmentHeader header)

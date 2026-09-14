@@ -2454,6 +2454,13 @@ cdef class IteratorColumn:
     export the current sequence via the methods :meth:`get_sequence`
     and :meth:`seq_len`.
 
+    Each :class:`~pysam.PileupColumn` keeps its iterator alive, so it
+    is always safe to access, even once nothing else references the
+    iterator that produced it or the iterator is itself exhausted --
+    it just may raise ``ValueError`` or keep reflecting whichever
+    position it read last, rather than the position it was originally
+    read at.
+
     See :class:`~AlignmentFile.pileup` for kwargs to the iterator.
     '''
 
@@ -2636,18 +2643,33 @@ cdef class IteratorColumn:
         '''free the memory alloc'd by bam_plp_init.
 
         This is needed before setup_iterator allocates another
-        pileup_iter, or else memory will be lost.  '''
+        pileup_iter, or else memory will be lost. Also nulls self.plp,
+        so a PileupColumn already handed out for the buffer this frees
+        fails its own NULL check instead of dereferencing it.
+        '''
         if self.pileup_iter != <bam_mplp_t>NULL:
             with nogil:
                 bam_mplp_reset(self.pileup_iter)
                 bam_mplp_destroy(self.pileup_iter)
                 self.pileup_iter = <bam_mplp_t>NULL
+            self.plp = <const bam_pileup1_t*>NULL
+
+    cdef PileupColumn _make_column(self):
+        '''build the PileupColumn for the current position, shared by
+        all three subclasses' __next__.'''
+        return makePileupColumn(&self.plp,
+                                self.tid,
+                                self.pos,
+                                self.n_plp,
+                                self.min_base_quality,
+                                self.iterdata.seq,
+                                self.samfile.header,
+                                self)
 
     def __dealloc__(self):
         # reset in order to avoid memory leak messages for iterators
         # that have not been fully consumed
         self._free_pileup_iter()
-        self.plp = <const bam_pileup1_t*>NULL
 
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)
@@ -2704,13 +2726,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
                 if self.pos >= self.stop:
                     raise StopIteration
 
-            return makePileupColumn(&self.plp,
-                                    self.tid,
-                                    self.pos,
-                                    self.n_plp,
-                                    self.min_base_quality,
-                                    self.iterdata.seq,
-                                    self.samfile.header)
+            return self._make_column()
 
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
@@ -2742,17 +2758,14 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                 if self.tid < self.samfile.nreferences:
                     self._setup_iterator(self.tid, 0, MAX_POS, 0)
                 else:
+                    # free here too: a trailing column must go stale even
+                    # if the last reference had no reads of its own
+                    self._free_pileup_iter()
                     raise StopIteration
                 continue
 
             # return result, if within same reference
-            return makePileupColumn(&self.plp,
-                                    self.tid,
-                                    self.pos,
-                                    self.n_plp,
-                                    self.min_base_quality,
-                                    self.iterdata.seq,
-                                    self.samfile.header)
+            return self._make_column()
 
 
 cdef class IteratorColumnAll(IteratorColumn):
@@ -2773,15 +2786,12 @@ cdef class IteratorColumnAll(IteratorColumn):
             raise ValueError("error during iteration")
 
         if n == 0:
+            # free here too: unlike IteratorColumnRegion, reset() always
+            # raises for this class, so there is no reuse to protect
+            self._free_pileup_iter()
             raise StopIteration
 
-        return makePileupColumn(&self.plp,
-                                self.tid,
-                                self.pos,
-                                self.n_plp,
-                                self.min_base_quality,
-                                self.iterdata.seq,
-                                self.samfile.header)
+        return self._make_column()
 
 
 cdef class SNPCall:
