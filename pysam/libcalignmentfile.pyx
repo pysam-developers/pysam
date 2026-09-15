@@ -73,8 +73,7 @@ from cpython cimport array as c_array
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport OSError_from_errno, encode_filename, from_string_and_size
 from pysam.libcalignedsegment cimport makeAlignedSegment, makePileupColumn
-from pysam.libchtslib cimport HTSFile, hisremote, sam_index_load2, sam_index_load3, \
-                              HTS_IDX_SAVE_REMOTE, HTS_IDX_SILENT_FAIL
+from pysam.libchtslib cimport *
 
 from io import StringIO
 

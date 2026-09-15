@@ -70,7 +70,7 @@ from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
 from libc.stdlib cimport calloc, free
 from libc.string cimport memcmp, memcpy, memset, strchr, strncpy
 
-from pysam.libchtslib cimport HTS_IDX_NOCOOR
+from pysam.libchtslib cimport *
 from pysam.libcutils cimport PysamUnicode_NewCloneWithSize, force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
 

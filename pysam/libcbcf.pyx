@@ -96,8 +96,7 @@ from cpython.tuple   cimport PyTuple_New, PyTuple_SET_ITEM
 from cpython.bytes   cimport PyBytes_FromStringAndSize
 from cpython.unicode cimport PyUnicode_DecodeUTF8
 
-from pysam.libchtslib cimport HTSFile, hisremote
-
+from pysam.libchtslib cimport *
 from pysam.utils import unquoted_str
 
 

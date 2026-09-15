@@ -1,5 +1,7 @@
 # cython: language_level=3
-from pysam.libchtslib cimport *
+from libc.stdint cimport int8_t, int16_t, int32_t, uint8_t, uint16_t, uint32_t
+
+from pysam.libchtslib cimport bam1_t, bam_pileup1_t, kstring_t
 
 cdef extern from "htslib_util.h":
 

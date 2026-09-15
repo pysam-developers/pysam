@@ -31,7 +31,7 @@
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 
-from pysam.libchtslib cimport *
+from pysam.libchtslib cimport bcf_hdr_t, bcf_hrec_t, bcf1_t, hts_idx_t, hts_itr_t, HTSFile, kstring_t, tbx_t
 
 
 cdef class VariantHeader(object):
