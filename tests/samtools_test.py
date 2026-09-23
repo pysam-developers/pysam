@@ -1,4 +1,5 @@
 import warnings
+import json
 import os
 import re
 import glob
@@ -299,11 +300,6 @@ class TestReturnType:
 class TestStdout:
     '''test if stdout can be redirected.'''
 
-    def testWithRedirectedStdout(self):
-        r = pysam.samtools.flagstat(
-            os.path.join(BAM_DATADIR, "ex1.bam"))
-        assert len(r) > 0
-
     def testWithoutRedirectedStdout(self):
         r = pysam.samtools.flagstat(
             os.path.join(BAM_DATADIR, "ex1.bam"),
@@ -327,6 +323,45 @@ class TestStdout:
         with open(outfile) as inf:
             r = inf.read()
         assert len(r) > 0
+
+
+class TestSamtoolsCapture:
+    """Test that each subcommand's standard output is correctly captured.
+    """
+    @pytest.mark.skipif(pysam.__version__ < "0.24.0", reason="calmd redirection broken")
+    def test_calmd(self):
+        text = pysam.samtools.calmd("-Q", os.path.join(BAM_DATADIR, "ex1.bam"), os.path.join(BAM_DATADIR, "ex1.fa"))
+        assert "EAS56_57:6:190:289:82" in text
+
+    def test_depad(self):
+        text = pysam.samtools.depad("-s", "-T", os.path.join(BAM_DATADIR, "ex1.fa"), os.path.join(BAM_DATADIR, "ex5.bam"))
+        assert "read_28833_29006_6945" in text
+
+    def test_faidx(self):
+        seq = pysam.samtools.faidx(os.path.join(BAM_DATADIR, "ex1.fa"), "chr2:101-120")
+        assert seq == ">chr2:101-120\nGAACTTGAAGACAAGTCTCT\n"
+
+    def test_flags(self):
+        text = pysam.samtools.flags("16")
+        assert text == "0x10\t16\tREVERSE\n"
+
+    def test_flagstat(self):
+        stats = json.loads(pysam.samtools.flagstat("-Ojson", os.path.join(BAM_DATADIR, "ex1.bam")))
+        assert stats["QC-passed reads"]["properly paired"] == 3124
+
+    def test_mpileup(self):
+        text = pysam.samtools.mpileup("--region", "chr2:500-501", os.path.join(BAM_DATADIR, "ex1.bam"))
+        assert "chr2\t500\tN\t44" in text
+
+    def test_view(self):
+        line = pysam.samtools.view(os.path.join(BAM_DATADIR, "ex1.bam"), "chr2:500-501", split_lines=True)
+        assert len(line) == 47
+        assert "EAS1_93:7:319:280:57" in line[0]
+        assert "EAS192_3:6:45:183:25" in line[-1]
+
+    def test_view_count(self):
+        line = pysam.samtools.view("--count", os.path.join(BAM_DATADIR, "ex1.bam"), "chr2:500-501")
+        assert line.rstrip() == "47"
 
 
 class TestPysam(TestSamtools):
