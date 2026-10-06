@@ -2012,12 +2012,16 @@ cdef class IteratorRow:
             assert self.htsfile != NULL
 
             if samfile.has_index():
-                if samfile.index_filename:
-                    cindexname = bindex_filename = encode_filename(samfile.index_filename)
-                with nogil:
-                    self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
+                # Reuse the index that has already been loaded by
+                # samfile, avoiding an expensive reload for every
+                # iterator. The index is read-only, so it is safe
+                # to share it across htsfile handles of the same
+                # file.
+                self.index = samfile.index
+                self.owns_index = False
             else:
                 self.index = NULL
+                self.owns_index = False
 
             # need to advance in newly opened file to position after header
             # better: use seek/tell?
@@ -2040,6 +2044,7 @@ cdef class IteratorRow:
             self.htsfile = samfile.htsfile
             self.index = samfile.index
             self.owns_samfile = False
+            self.owns_index = False
             self.header = samfile.header
 
         self.retval = 0
@@ -2049,8 +2054,9 @@ cdef class IteratorRow:
     def __dealloc__(self):
         bam_destroy1(self.b)
         if self.owns_samfile:
-            hts_idx_destroy(self.index)
             hts_close(self.htsfile)
+        if self.owns_index:
+            hts_idx_destroy(self.index)
 
 
 cdef class IteratorRowRegion(IteratorRow):
