@@ -7,10 +7,6 @@ from pysam.libcalignedsegment cimport AlignedSegment
 from pysam.libchtslib cimport bam_hdr_t, bam_mplp_t, bam_pileup1_t, bam1_t, faidx_t, \
     hts_idx_t, hts_itr_t, htsFile, HTSFile
 
-cdef extern from "htslib_util.h":
-
-    char * pysam_bam_get_qname(bam1_t * b)
-
 ####################################################################
 # Utility types
 

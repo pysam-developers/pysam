@@ -2917,7 +2917,7 @@ cdef class IndexedReads:
                                 b)
 
             if ret > 0:
-                qname = charptr_to_str(pysam_bam_get_qname(b))
+                qname = charptr_to_str(bam_get_qname(b))
                 self.index[qname].append(pos)
 
         bam_destroy1(b)

@@ -512,12 +512,11 @@ cdef inline pack_tags(tags):
 
 
 cdef inline int32_t getQueryStart(bam1_t *src) except -1:
-    cdef uint32_t * cigar_p
+    cdef const uint32_t *cigar_p = bam_get_cigar(src)
     cdef uint32_t start_offset = 0
     cdef uint32_t k, op
 
-    cigar_p = pysam_bam_get_cigar(src);
-    for k from 0 <= k < pysam_get_n_cigar(src):
+    for k in range(src.core.n_cigar):
         op = cigar_p[k] & BAM_CIGAR_MASK
         if op == BAM_CHARD_CLIP:
             if start_offset != 0 and start_offset != src.core.l_qseq:
@@ -531,13 +530,13 @@ cdef inline int32_t getQueryStart(bam1_t *src) except -1:
 
 
 cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
-    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+    cdef const uint32_t *cigar_p = bam_get_cigar(src)
     cdef uint32_t end_offset = src.core.l_qseq
     cdef uint32_t k, op
 
     # if there is no sequence, compute length from cigar string
     if end_offset == 0:
-        for k from 0 <= k < pysam_get_n_cigar(src):
+        for k in range(src.core.n_cigar):
             op = cigar_p[k] & BAM_CIGAR_MASK
             if op == BAM_CMATCH or \
                op == BAM_CINS or \
@@ -547,7 +546,7 @@ cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
                 end_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
     else:
         # walk backwards in cigar string
-        for k from pysam_get_n_cigar(src) > k >= 1:
+        for k in range(src.core.n_cigar - 1, 0, -1):
             op = cigar_p[k] & BAM_CIGAR_MASK
             if op == BAM_CHARD_CLIP:
                 if end_offset != src.core.l_qseq:
@@ -656,8 +655,7 @@ cdef inline uint32_t get_alignment_length(bam1_t *src):
     if cigar_p == NULL:
         return 0
     cdef int op
-    cdef uint32_t n = pysam_get_n_cigar(src)
-    for k from 0 <= k < n:
+    for k in range(src.core.n_cigar):
         op = cigar_p[k] & BAM_CIGAR_MASK
         if op == BAM_CSOFT_CLIP or op == BAM_CHARD_CLIP:
             continue
@@ -718,7 +716,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         raise ValueError("CIGAR field not present")
 
     cdef const uint8_t *seq_p = bam_get_seq(src)
-    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+    cdef const uint32_t *cigar_p = bam_get_cigar(src)
 
     cdef uint32_t r_idx = getQueryStart(src)  # take soft-clipping into account
     cdef int op
@@ -735,7 +733,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         raise ValueError(
             "could not allocate sequence of length %i" % max_len)
 
-    for k from 0 <= k < pysam_get_n_cigar(src):
+    for k in range(src.core.n_cigar):
         op = cigar_p[k] & BAM_CIGAR_MASK
         l = cigar_p[k] >> BAM_CIGAR_SHIFT
         if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
@@ -862,9 +860,9 @@ cdef inline bytes build_reference_sequence(bam1_t * src):
             "could not allocate sequence of length %i" % len(ref_seq))
 
     cdef char * cref_seq = ref_seq
-    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+    cdef const uint32_t *cigar_p = bam_get_cigar(src)
     cdef uint32_t r_idx = 0
-    for k from 0 <= k < pysam_get_n_cigar(src):
+    for k in range(src.core.n_cigar):
         op = cigar_p[k] & BAM_CIGAR_MASK
         l = cigar_p[k] >> BAM_CIGAR_SHIFT
         if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
@@ -1198,7 +1196,7 @@ cdef class AlignedSegment:
             if src.core.l_qname == 0:
                 return None
 
-            return charptr_to_str(<char *>pysam_bam_get_qname(src))
+            return charptr_to_str(bam_get_qname(src))
 
         def __set__(self, qname):
 
@@ -1214,7 +1212,7 @@ cdef class AlignedSegment:
             # the qname is \0 terminated
             cdef uint8_t l = len(qname) + 1
 
-            cdef char * p = pysam_bam_get_qname(src)
+            cdef char *p = bam_get_qname(src)
             cdef uint8_t l_extranul = 0
 
             if l % 4 != 0:
@@ -1232,7 +1230,7 @@ cdef class AlignedSegment:
 
             # re-acquire pointer to location in memory
             # as it might have moved
-            p = pysam_bam_get_qname(src)
+            p = bam_get_qname(src)
 
             strncpy(p, qname, l)
             # x might be > 255
@@ -1301,9 +1299,9 @@ cdef class AlignedSegment:
     property mapping_quality:
         """mapping quality"""
         def __get__(self):
-            return pysam_get_qual(self._delegate)
+            return self._delegate.core.qual
         def __set__(self, qual):
-            pysam_set_qual(self._delegate, qual)
+            self._delegate.core.qual = qual
 
     property cigarstring:
         '''the :term:`cigar` alignment as a string.
@@ -1324,17 +1322,17 @@ cdef class AlignedSegment:
         '''
         def __get__(self):
             cdef bam1_t *src = self._delegate
-            if pysam_get_n_cigar(src) == 0:
+            if src.core.n_cigar == 0:
                 return None
 
             cdef kstring_t buf
             buf.l = buf.m = 0
             buf.s = NULL
 
-            cdef uint32_t *cigar_p = pysam_bam_get_cigar(src)
+            cdef const uint32_t *cigar_p = bam_get_cigar(src)
             cdef uint32_t op, l
             cdef int k
-            for k from 0 <= k < pysam_get_n_cigar(src):
+            for k in range(src.core.n_cigar):
                 op = cigar_p[k] & BAM_CIGAR_MASK
                 l = cigar_p[k] >> BAM_CIGAR_SHIFT
                 kputl(l, &buf)
@@ -1482,7 +1480,7 @@ cdef class AlignedSegment:
             nbytes_old = (src.core.l_qseq + 1) // 2 + src.core.l_qseq
 
             # acquire pointer to location in memory
-            p = pysam_bam_get_seq(src)
+            p = bam_get_seq(src)
             src.core.l_qseq = l
 
             # change length of data field
@@ -1497,16 +1495,15 @@ cdef class AlignedSegment:
             if l > 0:
                 # re-acquire pointer to location in memory
                 # as it might have moved
-                p = pysam_bam_get_seq(src)
-                for k from 0 <= k < nbytes_new:
-                    p[k] = 0
+                p = bam_get_seq(src)
+                memset(p, 0, nbytes_new)
                 # convert to C string
                 s = seq
                 for k from 0 <= k < l:
                     p[k // 2] |= seq_nt16_table[<unsigned char>s[k]] << 4 * (1 - k % 2)
 
                 # erase qualities
-                p = pysam_bam_get_qual(src)
+                p = bam_get_qual(src)
                 memset(p, 0xff, l)
 
             self.cache.clear_query_sequences()
@@ -1537,7 +1534,7 @@ cdef class AlignedSegment:
 
             cdef bam1_t *src = self._delegate
             cdef int qual_len = src.core.l_qseq
-            cdef uint8_t *qual = pysam_bam_get_qual(src)
+            cdef const uint8_t *qual = bam_get_qual(src)
 
             if qual_len == 0 or qual[0] == 0xff:
                 self.cache.query_qualities = None
@@ -1556,7 +1553,7 @@ cdef class AlignedSegment:
 
             cdef bam1_t *src = self._delegate
             cdef int qual_len = src.core.l_qseq
-            cdef uint8_t *qual = pysam_bam_get_qual(src)
+            cdef uint8_t *qual = bam_get_qual(src)
 
             cdef int new_qual_len = len(new_qual) if new_qual is not None else 0
             if new_qual_len == 0:
@@ -1596,7 +1593,7 @@ cdef class AlignedSegment:
 
             cdef bam1_t *src = self._delegate
             cdef int qual_len = src.core.l_qseq
-            cdef uint8_t *qual = pysam_bam_get_qual(src)
+            cdef const uint8_t *qual = bam_get_qual(src)
 
             if qual_len == 0 or qual[0] == 0xff:
                 self.cache.query_qualities_str = None
@@ -1613,7 +1610,7 @@ cdef class AlignedSegment:
         def __set__(self, new_qual):
             cdef bam1_t *src = self._delegate
             cdef int qual_len = src.core.l_qseq
-            cdef uint8_t *qual = pysam_bam_get_qual(src)
+            cdef uint8_t *qual = bam_get_qual(src)
 
             cdef int new_qual_len = len(new_qual) if new_qual is not None else 0
             if new_qual_len == 0 or new_qual == "*":
@@ -1772,7 +1769,7 @@ cdef class AlignedSegment:
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
-            if (self.flag & BAM_FUNMAP) or pysam_get_n_cigar(src) == 0:
+            if (self.flag & BAM_FUNMAP) or src.core.n_cigar == 0:
                 return None
             return bam_endpos(src)
 
@@ -1783,12 +1780,10 @@ cdef class AlignedSegment:
         Returns None if not available.
         '''
         def __get__(self):
-            cdef bam1_t * src
-            src = self._delegate
-            if (self.flag & BAM_FUNMAP) or pysam_get_n_cigar(src) == 0:
+            cdef bam1_t *src = self._delegate
+            if (self.flag & BAM_FUNMAP) or src.core.n_cigar == 0:
                 return None
-            return bam_endpos(src) - \
-                self._delegate.core.pos
+            return bam_endpos(src) - self._delegate.core.pos
 
     property query_alignment_sequence:
         """aligned portion of the read.
@@ -2003,21 +1998,19 @@ cdef class AlignedSegment:
         (See also :meth:`get_aligned_pairs` which additionally returns
         the corresponding positions along the read.)
         """
+        cdef bam1_t *src = self._delegate
+        cdef const uint32_t *cigar_p = bam_get_cigar(src)
         cdef uint32_t k, i, l, pos
         cdef int op
-        cdef uint32_t * cigar_p
-        cdef bam1_t * src
         cdef bint _full = full_length
 
-        src = self._delegate
-        if pysam_get_n_cigar(src) == 0:
+        if src.core.n_cigar == 0:
             return []
 
         result = []
         pos = src.core.pos
-        cigar_p = pysam_bam_get_cigar(src)
 
-        for k from 0 <= k < pysam_get_n_cigar(src):
+        for k in range(src.core.n_cigar):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
@@ -2168,14 +2161,14 @@ cdef class AlignedSegment:
 
         r_idx = 0
 
-        if pysam_get_n_cigar(src) == 0:
+        if src.core.n_cigar == 0:
             return []
 
         result = []
         pos = src.core.pos
         qpos = 0
-        cigar_p = pysam_bam_get_cigar(src)
-        for k from 0 <= k < pysam_get_n_cigar(src):
+        cigar_p = bam_get_cigar(src)
+        for k in range(src.core.n_cigar):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
@@ -2227,22 +2220,19 @@ cdef class AlignedSegment:
         the two blocks are separated by an insertion
         in the read.
         """
-
+        cdef bam1_t *src = self._delegate
+        cdef const uint32_t* cigar_p = bam_get_cigar(src)
         cdef uint32_t k, pos, l
         cdef int op
-        cdef uint32_t * cigar_p
-        cdef bam1_t * src
 
-        src = self._delegate
-        if pysam_get_n_cigar(src) == 0:
+        if src.core.n_cigar == 0:
             return []
 
         result = []
         pos = src.core.pos
-        cigar_p = pysam_bam_get_cigar(src)
         l = 0
 
-        for k from 0 <= k < pysam_get_n_cigar(src):
+        for k in range(src.core.n_cigar):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
             if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
@@ -2259,21 +2249,19 @@ cdef class AlignedSegment:
 
         Return None if cigar alignment is not available.
         """
+        cdef bam1_t *src = self._delegate
+        cdef const uint32_t *cigar_p = bam_get_cigar(src)
         cdef uint32_t k, i, pos, overlap
         cdef int op, o
-        cdef uint32_t * cigar_p
-        cdef bam1_t * src
 
         overlap = 0
 
-        src = self._delegate
-        if pysam_get_n_cigar(src) == 0:
+        if src.core.n_cigar == 0:
             return None
         pos = src.core.pos
         o = 0
 
-        cigar_p = pysam_bam_get_cigar(src)
-        for k from 0 <= k < pysam_get_n_cigar(src):
+        for k in range(src.core.n_cigar):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
@@ -2343,12 +2331,9 @@ cdef class AlignedSegment:
         cdef int op
         cdef uint32_t l
         cdef int32_t k
-        cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+        cdef const uint32_t *cigar_p = bam_get_cigar(src)
 
-        if cigar_p == NULL:
-            return None
-
-        for k from 0 <= k < pysam_get_n_cigar(src):
+        for k in range(src.core.n_cigar):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
             base_view[op] += l
@@ -2404,19 +2389,17 @@ cdef class AlignedSegment:
         or None.
         """
         def __get__(self):
-            cdef uint32_t * cigar_p
-            cdef bam1_t * src
+            cdef bam1_t *src = self._delegate
+            cdef const uint32_t *cigar_p = bam_get_cigar(src)
             cdef uint32_t op, l
             cdef uint32_t k
 
-            src = self._delegate
-            if pysam_get_n_cigar(src) == 0:
+            if src.core.n_cigar == 0:
                 return None
 
             cigar = []
 
-            cigar_p = pysam_bam_get_cigar(src);
-            for k from 0 <= k < pysam_get_n_cigar(src):
+            for k in range(src.core.n_cigar):
                 op = cigar_p[k] & BAM_CIGAR_MASK
                 l = cigar_p[k] >> BAM_CIGAR_SHIFT
                 cigar.append((op, l))
@@ -2424,16 +2407,15 @@ cdef class AlignedSegment:
 
         def __set__(self, values):
             cdef uint32_t * p
-            cdef bam1_t * src
+            cdef bam1_t *src = self._delegate
             cdef op, l
             cdef int k
 
             k = 0
 
-            src = self._delegate
 
             # get location of cigar string
-            p = pysam_bam_get_cigar(src)
+            p = bam_get_cigar(src)
 
             # empty values for cigar string
             if values is None:
@@ -2442,7 +2424,7 @@ cdef class AlignedSegment:
             cdef uint32_t ncigar = len(values)
 
             cdef bam1_t * retval = pysam_bam_update(src,
-                                                    pysam_get_n_cigar(src) * 4,
+                                                    src.core.n_cigar * 4,
                                                     ncigar * 4,
                                                     <uint8_t*>p)
 
@@ -2450,11 +2432,11 @@ cdef class AlignedSegment:
                 raise MemoryError("could not allocate memory")
 
             # length is number of cigar operations, not bytes
-            pysam_set_n_cigar(src, ncigar)
+            src.core.n_cigar = ncigar
 
             # re-acquire pointer to location in memory
             # as it might have moved
-            p = pysam_bam_get_cigar(src)
+            p = bam_get_cigar(src)
 
             # insert cigar operations
             for op, l in values:
@@ -2733,7 +2715,7 @@ cdef class AlignedSegment:
         src = self._delegate
         if src.l_data == 0:
             return []
-        s = pysam_bam_get_aux(src)
+        s = bam_get_aux(src)
         result = []
         auxtag[2] = 0
         while s < (src.data + src.l_data):
@@ -2816,11 +2798,11 @@ cdef class AlignedSegment:
         # delete the old data and allocate new space.
         # If total_size == 0, the aux field will be
         # empty
-        old_size = pysam_bam_get_l_aux(src)
+        old_size = bam_get_l_aux(src)
         cdef bam1_t * retval = pysam_bam_update(src,
                                                 old_size,
                                                 new_size,
-                                                pysam_bam_get_aux(src))
+                                                bam_get_aux(src))
         if retval == NULL:
             raise MemoryError("could not allocate memory")
 
@@ -2828,7 +2810,7 @@ cdef class AlignedSegment:
         if new_size > 0:
 
             # get location of new data
-            s = pysam_bam_get_aux(src)
+            s = bam_get_aux(src)
 
             # check if there is direct path from buffer.raw to tmp
             p = buffer.raw
@@ -3372,7 +3354,7 @@ cdef class PileupColumn:
 
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
-            result.append(charptr_to_str(pysam_bam_get_qname(p.b)))
+            result.append(charptr_to_str(bam_get_qname(p.b)))
         return result
 
 
