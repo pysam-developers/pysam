@@ -585,7 +585,8 @@ cdef class AlignmentFile(HTSFile):
     add_sq_text=True, add_sam_header=True, check_header=True, check_sq=True,
     reference_filename=None, filename=None, index_filename=None,
     filepath_index=None, require_index=False, duplicate_filehandle=True,
-    ignore_truncation=False, format_options=None, threads=1)
+    ignore_truncation=False, format_options=None, threads=1,
+    thread_pool=None)
 
     A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
 
@@ -734,6 +735,11 @@ cdef class AlignmentFile(HTSFile):
         Number of threads to use for compressing/decompressing BAM/CRAM files.
         Setting threads to > 1 cannot be combined with `ignore_truncation`.
         (Default=1)
+
+    thread_pool: ThreadPool
+        A :class:`pysam.ThreadPool` to share with other files for
+        compressing/decompressing BAM/CRAM files. Cannot be combined with
+        `threads` > 1 or `ignore_truncation`. (Default=None)
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -807,7 +813,8 @@ cdef class AlignmentFile(HTSFile):
               duplicate_filehandle=True,
               ignore_truncation=False,
               format_options=None,
-              threads=1):
+              threads=1,
+              thread_pool=None):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
@@ -821,7 +828,9 @@ cdef class AlignmentFile(HTSFile):
         cdef bam_hdr_t * hdr = NULL
         cdef int ret
 
-        if threads > 1 and ignore_truncation:
+        if thread_pool is not None and threads > 1:
+            raise ValueError('Cannot specify both "threads" and "thread_pool"')
+        if (threads > 1 or thread_pool is not None) and ignore_truncation:
            # This won't raise errors if reaching a truncated alignment,
            # because bgzf_mt_reader in htslib does not deal with
            # bgzf_mt_read_block returning non-zero values, contrary
@@ -829,6 +838,7 @@ cdef class AlignmentFile(HTSFile):
            # Better to avoid this (for now) than to produce seemingly correct results.
            raise ValueError('Cannot add extra threads when "ignore_truncation" is True')
         self.threads = threads
+        self.thread_pool = thread_pool
 
         # for backwards compatibility:
         if referencenames is not None:

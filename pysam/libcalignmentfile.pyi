@@ -12,7 +12,7 @@ from typing import (
     Iterable,
 )
 
-from pysam.libchtslib import HTSFile, StrOrBytesPathOrFileDescriptorLike
+from pysam.libchtslib import HTSFile, StrOrBytesPathOrFileDescriptorLike, ThreadPool
 from pysam.libcalignedsegment import AlignedSegment, PileupColumn
 from pysam.libcfaidx import FastaFile
 
@@ -89,6 +89,7 @@ class AlignmentFile(HTSFile):
         ignore_truncation: bool = ...,
         format_options: Optional[Sequence[str]] = ...,
         threads: int = ...,
+        thread_pool: Optional[ThreadPool] = ...,
     ) -> None: ...
     def has_index(self) -> bool: ...
     def check_index(self) -> bool: ...
