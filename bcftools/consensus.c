@@ -763,30 +763,64 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         if ( args->absent_allele ) freeze_ref(args,rec);
         return;
     }
-    if ( ialt==-1 )
+
+    if ( ialt==-1 ) // missing allele, it can be a single position or an entire gvcf block
     {
-        // missing allele, it can be a single position or an entire gvcf block
-        if ( rec->rlen>1 && bcf_has_variant_types(rec,VCF_REF,bcf_match_exact)>0 )
+        if ( !args->missing_allele ) return;
+
+        // Missing alleles cannot overlap an already applied variant.
+        if ( rec->pos <= args->fa_frz_pos )
         {
-            kstring_t str = {0,0,0};
-            int idx = rec->pos - args->fa_ori_pos + args->fa_mod_off;   // position of the variant within the modified fasta sequence
-            kputsn(args->fa_buf.s+idx,rec->rlen, &str);
-            kputc(',', &str);
-            for (i=0; i<rec->rlen; i++) kputc(args->missing_allele, &str);
-            bcf_update_alleles_str(args->hdr, rec, str.s);
-            free(str.s);
+            fprintf(stderr,"The site %s:%"PRId64" overlaps with another variant, skipping...\n", bcf_seqname(args->hdr,rec),(int64_t)rec->pos+1);
+            return;
         }
+
+        // Mask the full span of reference blocks and possible deletions.
+        int set_missing = 0;
+        if ( rec->rlen>1 )
+        {
+            if ( bcf_has_variant_types(rec,VCF_REF,bcf_match_exact)>0 ) set_missing = 1;
+            else if ( bcf_has_variant_types(rec,VCF_DEL,bcf_match_overlap)>0 ) set_missing = 1;
+
+            for (j=1; !set_missing && j<rec->n_allele; j++)
+                if ( !strncasecmp(rec->d.allele[j],"<DEL",4) ) set_missing = 1;
+        }
+
+        hts_pos_t pos = rec->pos;
+        hts_pos_t len = set_missing ? rec->rlen : 1;
+        hts_pos_t idx = pos - args->fa_ori_pos + args->fa_mod_off;  // position of the variant within the modified fasta sequence
+
+        // Clip to the available FASTA interval before accessing its buffer.
+        if ( idx<0 )
+        {
+            pos -= idx;
+            len += idx;
+            idx = 0;
+        }
+        if ( len<=0 || idx >= (hts_pos_t)args->fa_buf.l ) return;
+        if ( len > (hts_pos_t)args->fa_buf.l - idx ) len = (hts_pos_t)args->fa_buf.l - idx;
+
+        kstring_t str = {0,0,0};
+        if ( set_missing )
+            kputsn(args->fa_buf.s+idx,len,&str);
         else
-        {
-            char alleles[4];
-            alleles[0] = rec->d.allele[0][0];
-            alleles[1] = ',';
-            alleles[2] = args->missing_allele;
-            alleles[3] = 0;
-            bcf_update_alleles_str(args->hdr, rec, alleles);
-        }
+            kputc(rec->d.allele[0][0],&str);
+        kputc(',',&str);
+        hts_pos_t k;
+        for (k=0; k<len; k++) kputc(args->missing_allele,&str);
+
+        rec->pos = pos;
+        if ( bcf_update_alleles_str(args->hdr,rec,str.s)<0 )
+            error("Could not update alleles at %s:%"PRId64"\n", bcf_seqname(args->hdr,rec),(int64_t)rec->pos+1);
+        free(str.s);
+
+        // Use exactly the span represented by the replacement alleles.
+        rec->rlen = len;
         ialt = 1;
     }
+
+    // An explicit sequence ALT replaces the REF
+    if ( ialt>0 && rec->d.allele[ialt][0]!='<' ) rec->rlen = strlen(rec->d.allele[0]);
 
     // For some variant types POS+REF refer to the base *before* the event; in such case set trim_beg
     int trim_beg = 0;
@@ -805,7 +839,11 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         trim_beg = 1;
         var_len  = 1 - rec->rlen;
     }
-    else if ( (var_type & VCF_OTHER) && !strncasecmp(rec->d.allele[ialt],"<INS",4) ) trim_beg = 1;
+    else if ( var_type & VCF_OTHER )
+    {
+        if ( !strncasecmp(rec->d.allele[ialt],"<INS",4) ) trim_beg = 1;
+        //else if ( !strncasecmp(rec->d.allele[ialt],"<DEL",4) ) trim_beg = 1;
+    }
 
     // Overlapping variant?
     if ( ialt==0 && rec->pos <= args->fa_frz_pos && rec->pos + rec->rlen - 1 > args->fa_frz_pos )

@@ -814,50 +814,59 @@ double calc_mwu_bias(int *a, int *b, int n, int left)
 // with 0 being equality of the two distributions and +ve/-ve from there.
 //
 // This is a more robust score to filter on.
+// Refactored (by Claude Opus 5.5) to avoid the p^3-p step referred to in
+// the Wikipedia page.
 double calc_mwu_biasZ(int *a, int *b, int n, int left_only, int do_Z) {
     int i;
-    int64_t t;
 
-    // Optimisation
+    // Optimisation: with no B values U is undefined.  (The old b_empty
+    // branch computed na and t, but then always returned HUGE_VAL via !nb.)
     for (i = 0; i < n; i++)
         if (b[i])
             break;
-    int b_empty = (i == n);
-
-    // Count equal (e), less-than (l) and greater-than (g) permutations.
-    int e = 0, l = 0, na = 0, nb = 0;
-    if (b_empty) {
-        for (t = 0, i = n-1; i >= 0; i--) {
-            na += a[i];
-            t += (a[i]*a[i]-1)*a[i];  // adjustment score for ties
-        }
-    } else {
-        for (t = 0, i = n-1; i >= 0; i--) {
-            // Combinations of a[i] and b[j] for i==j
-            e += a[i]*b[i];
-
-            // nb is running total of b[i+1]..b[n-1].
-            // Therefore a[i]*nb is the number of combinations of a[i] and b[j]
-            // for all i < j.
-            l += a[i]*nb;    // a<b
-
-            na += a[i];
-            nb += b[i];
-            int p = a[i]+b[i];
-            t += (p*p-1)*p;  // adjustment score for ties
-        }
-    }
-
-    if (!na || !nb)
+    if (i == n)
         return HUGE_VAL;
 
-    double U, m;
-    U = l + e*0.5; // Mann-Whitney U score
-    m = na*nb / 2.0;
+    // Count equal (e) and less-than (l) permutations, plus the tie
+    // adjustment.
+    //
+    // The standard tie-corrected variance is
+    //     var = na*nb/12 * ((N+1) - sum(p^3-p) / (N*(N-1)))
+    // with p = a[i]+b[i] and N = na+nb.  As sum(p) == N this simplifies to
+    //     var = na*nb * (N^3 - sum(p^3)) / (12*N*(N-1))
+    // N^3 - sum(p^3) is accumulated incrementally: adding a bin of size p
+    // to a running total S contributes (S+p)^3 - S^3 - p^3 = 3*S*p*(S+p).
+    // All terms are non-negative, so there is no integer overflow, no
+    // cancellation, and a single occupied bin gives exactly zero.
+    int64_t e = 0, l = 0, na = 0, nb = 0;
+    double d = 0;   // N^3 - sum(p^3)
+    for (i = n-1; i >= 0; i--) {
+        // Combinations of a[i] and b[j] for i==j
+        e += (int64_t)a[i]*b[i];
+
+        // nb is running total of b[i+1]..b[n-1].
+        // Therefore a[i]*nb is the number of combinations of a[i] and b[j]
+        // for all i < j.
+        l += a[i]*nb; // a<b
+
+        int64_t S = na + nb, p = (int64_t)a[i] + b[i];
+        d += 3.0 * S * p * (S + p);
+
+        na += a[i];
+        nb += b[i];
+    }
+
+    if (!na)
+        return HUGE_VAL;
+
+    double N = na + nb;             // >= 2 as na, nb >= 1
+    double U = l + e*0.5;           // Mann-Whitney U score
+    double m = (double)na*nb / 2.0;
 
     // With ties adjustment
-    double var2 = (na*nb)/12.0 * ((na+nb+1) - t/(double)((na+nb)*(na+nb-1)));
+    double var2 = (double)na*nb * d / (12.0 * N * (N-1));
     // var = na*nb*(na+nb+1)/12.0; // simpler; minus tie adjustment
+
     if (var2 <= 0)
         return do_Z ? 0 : 1;
 
@@ -877,11 +886,11 @@ double calc_mwu_biasZ(int *a, int *b, int n, int left_only, int do_Z) {
         return exp(-0.5*(U-m)*(U-m)/var2);
     }
 
-    // Exact calculation
+    // Exact calculation; na, nb < 8 here
     if (na==1 || nb == 1)
-        return mann_whitney_1947_(na, nb, U) * sqrt(2*M_PI*var2);
+        return mann_whitney_1947_((int)na, (int)nb, U) * sqrt(2*M_PI*var2);
     else
-        return mann_whitney_1947(na, nb, U) * sqrt(2*M_PI*var2);
+        return mann_whitney_1947((int)na, (int)nb, U) * sqrt(2*M_PI*var2);
 }
 
 static inline double logsumexp2(double a, double b)

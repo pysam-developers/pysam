@@ -2,7 +2,7 @@
 
 /*  bam_mate.c -- fix mate pairing information and clean up flags.
 
-    Copyright (C) 2009, 2011-2017, 2019, 2022, 2024 Genome Research Ltd.
+    Copyright (C) 2009, 2011-2017, 2019, 2022, 2024, 2026 Genome Research Ltd.
     Portions copyright (C) 2011 Broad Institute.
     Portions copyright (C) 2012 Peter Cock, The James Hutton Institute.
 
@@ -317,7 +317,7 @@ static int bam_trim(bam1_t *b, hts_pos_t end) {
         oplen = bam_cigar_oplen(cigar[i]);
         if (op == BAM_CHARD_CLIP) {
             new_cigar[j++] = cigar[i];
-        } else {
+        } else if (j > 0) {
             new_cigar[j-1] =
                 bam_cigar_gen(bam_cigar_oplen(new_cigar[j-1]) + oplen,
                               BAM_CSOFT_CLIP);
@@ -800,7 +800,8 @@ void delete_mod_tags(bam1_t *b) {
         tag = next;
     }
 
-    b->l_data = (to-2) - b->data;
+    if (to)
+        b->l_data = (to-2) - b->data;
 }
 
 int validate_MM(bam1_t *b, hts_base_mod_state *state) {
@@ -1029,11 +1030,7 @@ static int bam_mating_core(samFile *in, samFile *out, int remove_reads,
     }
     ks_free(&str);
 
-    if (!no_pg && sam_hdr_add_pg(header, "samtools",
-                                 "VN", samtools_version(),
-                                 arg_list ? "CL": NULL,
-                                 arg_list ? arg_list : NULL,
-                                 NULL))
+    if (samtools_add_pg_line(header, arg_list, no_pg))
         goto fail;
 
     if (sam_hdr_write(out, header) < 0) goto write_fail;

@@ -29,7 +29,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <htslib/hts.h>
 #include <htslib/kstring.h>
 #include <htslib/khash_str2int.h>
-#include <khash_str2str.h>
+#include "khash_str2str.h"
 #include "bam_sample.h"
 #include "bcftools.h"
 

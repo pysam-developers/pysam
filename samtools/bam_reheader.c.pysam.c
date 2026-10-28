@@ -3,7 +3,7 @@
 /*  bam_reheader.c -- reheader subcommand.
 
     Copyright (C) 2010 Broad Institute.
-    Copyright (C) 2012-2019, 2025 Genome Research Ltd.
+    Copyright (C) 2012-2019, 2025-2026 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -79,11 +79,7 @@ int bam_reheader(BGZF *in, sam_hdr_t *h, int fd,
         goto fail;
     }
 
-    if (!no_pg && sam_hdr_add_pg(h, "samtools",
-                           "VN", samtools_version(),
-                           arg_list ? "CL": NULL,
-                           arg_list ? arg_list : NULL,
-                           NULL) != 0)
+    if (samtools_add_pg_line(h, arg_list, no_pg) != 0)
             goto fail;
 
     if (bam_hdr_write(fp, h) < 0) {
@@ -142,11 +138,7 @@ int cram_reheader(cram_fd *in, sam_hdr_t *h, const char *arg_list, int no_pg)
     if (!cram_h)
         return -1;
     cram_fd_set_header(out, cram_h);
-    if (!no_pg && sam_hdr_add_pg(cram_fd_get_header(out), "samtools",
-                           "VN", samtools_version(),
-                           arg_list ? "CL": NULL,
-                           arg_list ? arg_list : NULL,
-                           NULL))
+    if (samtools_add_pg_line(cram_fd_get_header(out), arg_list, no_pg))
             goto err;
 
     if (sam_hdr_write(h_out, cram_h) != 0)
@@ -214,10 +206,7 @@ int cram_reheader_inplace2(cram_fd *fd, sam_hdr_t *h, const char *arg_list,
     if (!cram_h)
         goto err;
 
-    if (!no_pg && sam_hdr_add_pg(cram_h, "samtools", "VN", samtools_version(),
-                                 arg_list ? "CL": NULL,
-                                 arg_list ? arg_list : NULL,
-                                 NULL))
+    if (samtools_add_pg_line(cram_h, arg_list, no_pg))
         goto err;
 
     int header_len = sam_hdr_length(cram_h);
@@ -313,10 +302,7 @@ int cram_reheader_inplace3(cram_fd *fd, sam_hdr_t *h, const char *arg_list,
     if (!cram_h)
         goto err;
 
-    if (!no_pg && sam_hdr_add_pg(cram_h, "samtools", "VN", samtools_version(),
-                                 arg_list ? "CL": NULL,
-                                 arg_list ? arg_list : NULL,
-                                 NULL))
+    if (samtools_add_pg_line(cram_h, arg_list, no_pg))
         goto err;
 
     int header_len = sam_hdr_length(cram_h);

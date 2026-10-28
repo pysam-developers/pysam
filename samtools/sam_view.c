@@ -96,6 +96,7 @@ typedef struct samview_settings {
     int sanitize;
     int count_rf; // CRAM_OPT_REQUIRED_FIELDS for view -c
     int exclude_no_rg;
+    int remove_ur;
 } samview_settings_t;
 
 // Copied from htslib/sam.c.
@@ -181,7 +182,7 @@ static int process_aln(const sam_hdr_t *h, bam1_t *b, samview_settings_t* settin
     }
     if (settings->rghash || settings->exclude_no_rg) {
         uint8_t *s = bam_aux_get(b, "RG");
-        if (s) {
+        if (s && *s == 'Z') {
             if (settings->rghash) {
                 khint_t k = kh_get(str, settings->rghash, (char*)(s + 1));
                 if ((k == kh_end(settings->rghash)) != settings->rghash_discard)
@@ -296,7 +297,7 @@ static int populate_lookup_from_file(const char *subcmd, strhash_t lookup, char 
         char *d = strdup(buf);
         if (d != NULL) {
             kh_put(str, lookup, d, &ret);
-            if (ret == 0) free(d); /* Duplicate */
+            if (ret <= 0) free(d); /* Duplicate or not added */
         } else {
             ret = -1;
         }
@@ -754,10 +755,13 @@ static inline int process_one_record(samview_settings_t *conf, bam1_t *b,
             b->core.n_cigar = 0;
         }
 
-        if (check_sam_write1(conf->out, conf->header,
-                             b, conf->fn_out, write_error) < 0) {
+        int ret = conf->un_out
+            ? check_sam_write1(conf->un_out, conf->header,
+                               b, conf->fn_un_out, write_error)
+            : check_sam_write1(conf->out, conf->header,
+                               b, conf->fn_out, write_error);
+        if (ret < 0)
             return -1;
-        }
     } else {
         if (conf->un_out) {
             if (check_sam_write1(conf->un_out, conf->header,
@@ -946,6 +950,7 @@ int main_samview(int argc, char *argv[])
         {"use-index", no_argument, NULL, 'M'},
         {"with-header", no_argument, NULL, 'h'},
         {"sanitize", required_argument, NULL, 'z'},
+        {"remove-ur", no_argument, NULL, LONGOPT('U')},
         {NULL, 0, NULL, 0}
     };
 
@@ -1026,19 +1031,24 @@ int main_samview(int argc, char *argv[])
         case 'S': break;
         case 'b': out_format = "b"; break;
         case 'C': out_format = "c"; break;
-        case 't': settings.fn_fai = strdup(optarg); break;
+        case 't':
+            // NB: also can come from fai_path(), which mallocs
+            free(settings.fn_fai);
+            settings.fn_fai = strdup(optarg);
+            break;
         case 'h': is_header = 1; break;
         case 'H': is_header_only = 1; break;
         case LONGOPT('H'): is_header = is_header_only = 0; break;
-        case 'o': settings.fn_out = strdup(optarg); break;
-        case 'U': settings.fn_un_out = strdup(optarg); break;
+        case 'o': settings.fn_out = optarg; break;
+        case 'U': settings.fn_un_out = optarg; break;
         case 'X': has_index_file = 1; break;
         case 'f':
             tmp_flag = bam_str2flag(optarg);
 
             if (tmp_flag < 0) {
                 print_error("view", "Unknown flag '%s'", optarg);
-                return 1;
+                ret = 1;
+                goto view_end;
             }
 
             settings.flag_on |= tmp_flag;
@@ -1049,7 +1059,8 @@ int main_samview(int argc, char *argv[])
 
             if (tmp_flag < 0) {
                 print_error("view", "Unknown flag '%s'", optarg);
-                return 1;
+                ret = 1;
+                goto view_end;
             }
 
             settings.flag_off |= tmp_flag;
@@ -1060,7 +1071,8 @@ int main_samview(int argc, char *argv[])
 
             if (tmp_flag < 0) {
                 print_error("view", "Unknown flag '%s'", optarg);
-                return 1;
+                ret = 1;
+                goto view_end;
             }
 
             settings.flag_anyon |= tmp_flag;
@@ -1071,7 +1083,8 @@ int main_samview(int argc, char *argv[])
 
             if (tmp_flag < 0) {
                 print_error("view", "Unknown flag '%s'", optarg);
-                return 1;
+                ret = 1;
+                goto view_end;
             }
 
             settings.flag_alloff |= tmp_flag;
@@ -1087,7 +1100,7 @@ int main_samview(int argc, char *argv[])
         case 'u': compress_level = 0; break;
         case '1': compress_level = 1; break;
         case 'l':
-            settings.library = strdup(optarg);
+            settings.library = optarg;
             settings.count_rf |= SAM_RGAUX;
             break;
         case 'p': settings.unmap = 1; break;
@@ -1234,7 +1247,8 @@ int main_samview(int argc, char *argv[])
         case 'e':
             if (!(settings.filter = hts_filter_init(optarg))) {
                 print_error("main_samview", "Couldn't initialise filter");
-                return 1;
+                ret = 1;
+                goto view_end;
             }
             settings.count_rf = INT_MAX; // no way to know what we need
             break;
@@ -1243,7 +1257,8 @@ int main_samview(int argc, char *argv[])
 
             if (tmp_flag < 0) {
                 print_error("view", "Unknown flag '%s'", optarg);
-                return 1;
+                ret = 1;
+                goto view_end;
             }
 
             settings.remove_flag |= tmp_flag;
@@ -1254,7 +1269,8 @@ int main_samview(int argc, char *argv[])
 
             if (tmp_flag < 0) {
                 print_error("view", "Unknown flag '%s'", optarg);
-                return 1;
+                ret = 1;
+                goto view_end;
             }
 
             settings.add_flag |= tmp_flag;
@@ -1281,6 +1297,9 @@ int main_samview(int argc, char *argv[])
             }
             break;
 
+        case LONGOPT('U'):
+            settings.remove_ur = 1; break;
+
         default:
             if (parse_sam_global_opt(c, optarg, lopts, &ga) != 0)
                 return usage(stderr, EXIT_FAILURE, 0);
@@ -1290,7 +1309,8 @@ int main_samview(int argc, char *argv[])
     if (settings.is_count && settings.fetch_pairs)
     {
         print_error("view","The options -P and -c cannot be combined\n");
-        return 1;
+        ret = 1;
+        goto view_end;
     }
     if (settings.fn_fai == 0 && ga.reference) settings.fn_fai = fai_path(ga.reference);
     if (is_header_only) is_header = 1;
@@ -1328,12 +1348,6 @@ int main_samview(int argc, char *argv[])
         return usage(stderr, EXIT_FAILURE, 0); // potential memory leak...
     }
 
-    if (settings.unmap && settings.fn_un_out) {
-        print_error("view", "Options --unoutput and --unmap are mutually exclusive.");
-        ret = 1;
-        goto view_end;
-    }
-
     settings.fn_in = (optind < argc)? argv[optind] : "-";
     if ((settings.in = sam_open_format(settings.fn_in, "r", &ga.in)) == 0) {
         print_error_errno("view", "failed to open \"%s\" for reading", settings.fn_in);
@@ -1355,6 +1369,14 @@ int main_samview(int argc, char *argv[])
     }
     if (settings.rghash) {
         sam_hdr_remove_lines(settings.header, "RG", "ID", settings.rghash);
+    }
+
+    if (settings.remove_ur) {
+        if (sam_hdr_remove_tag_all(settings.header, "SQ", "UR") < 0) {
+            fprintf(stderr, "[main_samview] unable to remove UR tags from input.\n");
+            ret = 1;
+            goto view_end;
+        }
     }
 
     // Compute the subsampling seed and record the parameters in a @CO
@@ -1409,15 +1431,16 @@ int main_samview(int argc, char *argv[])
                 ret = 1;
                 goto view_end;
             }
-            if (sam_hdr_add_pg(settings.header, "samtools",
-                                         "VN", samtools_version(),
-                                         arg_list ? "CL": NULL,
-                                         arg_list ? arg_list : NULL,
-                                         NULL)) {
+            if (samtools_add_pg_line(settings.header, arg_list, 0)) {
                 print_error("view", "failed to add PG line to the header");
                 ret = 1;
                 goto view_end;
             }
+        }
+
+        if (settings.remove_ur) {
+            // stop cram from writing out any UR tags
+            hts_set_opt(settings.out, CRAM_OPT_RM_UR, 1);
         }
 
         if (ga.write_index || is_header ||
@@ -1503,7 +1526,8 @@ int main_samview(int argc, char *argv[])
         nregs = argc - optind - 1;
     } else if ( has_index_file && argc-optind < 2) {
         print_error("view", "Incorrect number of arguments for -X option. Aborting.");
-        return 1;
+        ret = 1;
+        goto view_end;
     }
     if (regs)
         settings.count_rf |= SAM_POS | SAM_RNAME | SAM_CIGAR;
@@ -1514,7 +1538,8 @@ int main_samview(int argc, char *argv[])
         if ( !settings.hts_idx )
         {
             print_error("view", "Random alignment retrieval only works for indexed SAM.gz, BAM or CRAM files.");
-            return 1;
+            ret = 1;
+            goto view_end;
         }
     }
 
@@ -1585,7 +1610,7 @@ view_end:
     if (settings.un_out) check_sam_close("view", settings.un_out, settings.fn_un_out, "file", &ret);
     if (fp_out) fclose(fp_out);
 
-    free(settings.fn_fai); free(settings.fn_out); free(settings.library);  free(settings.fn_un_out);
+    free(settings.fn_fai);
     sam_global_args_free(&ga);
     if ( settings.header ) sam_hdr_destroy(settings.header);
     if (settings.bed) bed_destroy(settings.bed);
@@ -1654,6 +1679,7 @@ static int usage(FILE *fp, int exit_status, int is_long_help)
 "  -p, --unmap                Set flag to UNMAP on reads not selected\n"
 "                             then write to output file.\n"
 "  -P, --fetch-pairs          Retrieve complete pairs even when outside of region\n"
+"      --remove-ur            Remove the UR tags from SQ header lines.\n"
 "\n"
 "Input options:\n"
 "  -t, --fai-reference FILE   FILE listing reference names and lengths\n"

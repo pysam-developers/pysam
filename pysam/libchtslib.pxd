@@ -307,6 +307,7 @@ cdef extern from "htslib/hts.h" nogil:
         CRAM_OPT_USE_FQZ
         CRAM_OPT_USE_ARITH
         CRAM_OPT_POS_DELTA
+        CRAM_OPT_RM_UR
 
         HTS_OPT_COMPRESSION_LEVEL
         HTS_OPT_NTHREADS
@@ -695,6 +696,7 @@ cdef extern from "htslib/sam.h" nogil:
     char *stringify_argv(int argc, char *argv[])
     void sam_hdr_incr_ref(sam_hdr_t *h)
 
+    int sam_hdr_remove_tag_all(sam_hdr_t *bh, const char *type, const char *tag_id)
     int sam_hdr_find_hd(sam_hdr_t *h, kstring_t *ks)
     int sam_hdr_find_tag_hd(sam_hdr_t *h, const char *key, kstring_t *ks)
     int sam_hdr_update_hd(sam_hdr_t *h, ...)
@@ -1119,6 +1121,7 @@ cdef extern from "htslib/tbx.h" nogil:
     int tbx_itr_next(htsFile *fp, tbx_t *tbx, hts_itr_t *itr, kstring_t *r)
     int tbx_bgzf_itr_next(BGZF *fp, tbx_t *tbx, hts_itr_t *itr, kstring_t *r)
     hts_itr_t *tbx_itr_regarray(tbx_t *tbx, char **regarray, unsigned int regcount)
+    hts_itr_t *tbx_itr_regions(const tbx_t *tbx, hts_reglist_t *reglist, unsigned int regcount)
 
     int tbx_name2id(tbx_t *tbx, const char *ss)
     BGZF *hts_get_bgzfp(htsFile *fp)
@@ -1460,6 +1463,7 @@ cdef extern from "htslib/vcf.h" nogil:
     hts_itr_t *bcf_itr_queryi(const hts_idx_t *idx, int tid, hts_pos_t beg, hts_pos_t end)
     hts_itr_t *bcf_itr_querys(const hts_idx_t *idx, bcf_hdr_t *hdr, const char *s)
     hts_itr_t *bcf_itr_regarray(const hts_idx_t *idx, bcf_hdr_t *hdr, char **regarray, unsigned int regcount)
+    hts_itr_t *bcf_itr_regions(const hts_idx_t *idx, bcf_hdr_t *hdr, hts_reglist_t *reglist, unsigned int regcount)
     int bcf_itr_next(htsFile *htsfp, hts_itr_t *itr, void *r)
 
     hts_idx_t *bcf_index_load(const char *fn)
