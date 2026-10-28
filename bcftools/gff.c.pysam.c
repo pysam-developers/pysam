@@ -2,7 +2,7 @@
 
 /* The MIT License
 
-   Copyright (c) 2023-2025 Genome Research Ltd.
+   Copyright (c) 2023-2026 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -111,7 +111,7 @@ struct gff_t_
     // str2int hash with parsed sequence names
     void *seq2int;
 
-    // temporary structures, deleted after initializtion
+    // temporary structures, deleted after initialization
     aux_t init;
 
     // sequences
@@ -123,6 +123,7 @@ struct gff_t_
 
     int verbosity;
     int force;      // force run under various conditions. Currently only to skip out-of-phase transcripts
+    int link_exons; // if not set, do not link CDS and exons
 
     struct {
         int unknown_chr,unknown_tscript_biotype,unknown_strand,unknown_phase,duplicate_id;
@@ -165,6 +166,12 @@ int gff_set(gff_t *gff, gff_opt_t key, ...)
         case verbosity:
             va_start(args, key);
             gff->verbosity = va_arg(args,int);
+            va_end(args);
+            return 0;
+
+        case link_exons:
+            va_start(args, key);
+            gff->link_exons = va_arg(args,int);
             va_end(args);
             return 0;
 
@@ -652,6 +659,7 @@ static void register_cds(gff_t *gff, ftr_t *ftr)
 
     gf_cds_t *cds = (gf_cds_t*) malloc(sizeof(gf_cds_t));
     cds->tr    = tr;
+    cds->exon  = NULL;
     cds->beg   = ftr->beg;
     cds->len   = ftr->end - ftr->beg + 1;
     cds->icds  = 0;     // to keep valgrind on mac happy
@@ -677,6 +685,7 @@ static void register_exon(gff_t *gff, ftr_t *ftr)
 {
     aux_t *aux = &gff->init;
     gf_exon_t *exon = (gf_exon_t*) malloc(sizeof(gf_exon_t));
+    exon->iexon = 0;
     exon->beg = ftr->beg;
     exon->end = ftr->end;
     exon->tr  = tscript_init(aux, ftr->trid);
@@ -686,9 +695,55 @@ static void register_exon(gff_t *gff, ftr_t *ftr)
     regidx_push(gff->idx_exon, chr_beg,chr_end, exon->beg - N_SPLICE_REGION_INTRON, exon->end + N_SPLICE_REGION_INTRON, &exon);
 }
 
+static int cmp_exon_ptr(const void *a_ptr, const void *b_ptr)
+{
+    const gf_exon_t *a = *((const gf_exon_t **)a_ptr);
+    const gf_exon_t *b = *((const gf_exon_t **)b_ptr);
+    if ( a->tr->id < b->tr->id ) return -1;
+    if ( a->tr->id > b->tr->id ) return 1;
+    int lt = a->tr->strand==STRAND_REV ? 1 : -1;
+    int gt = a->tr->strand==STRAND_REV ? -1 : 1;
+    if ( a->beg < b->beg ) return lt;
+    if ( a->beg > b->beg ) return gt;
+    if ( a->end < b->end ) return lt;
+    if ( a->end > b->end ) return gt;
+    return 0;
+}
+static void tscript_init_exons(gff_t *gff)
+{
+    if ( !gff->link_exons ) return;
+
+    int nexon = regidx_nregs(gff->idx_exon);
+    if ( !nexon ) return;
+
+    gf_exon_t **exons = malloc(nexon * sizeof(*exons));
+    regitr_t *itr = regitr_init(gff->idx_exon);
+    int i = 0;
+    while ( regitr_loop(itr) ) exons[i++] = regitr_payload(itr, gf_exon_t*);
+    regitr_destroy(itr);
+    assert(i == nexon);
+
+    qsort(exons, nexon, sizeof(*exons), cmp_exon_ptr);
+
+    gf_tscript_t *tr = NULL;
+    uint32_t iexon = 0;
+    for (i=0; i<nexon; i++)
+    {
+        gf_exon_t *exon = exons[i];
+        if ( exon->tr != tr )
+        {
+            tr = exon->tr;
+            iexon = 0;
+        }
+        exon->iexon = iexon++;
+        tr->nexons = iexon;
+    }
+    free(exons);
+}
 static void tscript_init_cds(gff_t *gff)
 {
     aux_t *aux = &gff->init;
+    regitr_t *itr_exon = regitr_init(gff->idx_exon);
 
     // Sort CDS in all transcripts, set offsets, check their phase, length, create index (idx_cds)
     khint_t k;
@@ -890,7 +945,28 @@ static void tscript_init_cds(gff_t *gff)
             len += tr->cds[i]->len;
             regidx_push(gff->idx_cds, chr_beg,chr_end, tr->cds[i]->beg,tr->cds[i]->beg+tr->cds[i]->len-1, &tr->cds[i]);
         }
+
+        // connect CDS segments with exons
+        if ( gff->link_exons )
+        {
+            char *chr = gff->seq[tr->gene->iseq];
+            for (i=0; i<tr->ncds; i++)
+            {
+                uint32_t beg = tr->cds[i]->beg;
+                uint32_t end = tr->cds[i]->beg + tr->cds[i]->len - 1;
+                if ( !regidx_overlap(gff->idx_exon,chr,beg,end,itr_exon) ) continue;
+                while ( regitr_overlap(itr_exon) )
+                {
+                    gf_exon_t *exon = regitr_payload(itr_exon, gf_exon_t*);
+                    if ( tr!=exon->tr ) continue;
+                    if ( exon->end < beg || exon->beg > end ) continue;
+                    assert( !tr->cds[i]->exon );
+                    tr->cds[i]->exon = exon;
+                }
+            }
+        }
     }
+    regitr_destroy(itr_exon);
 }
 
 static void regidx_free_gf(void *payload) { free(*((gf_cds_t**)payload)); }
@@ -921,7 +997,7 @@ static int gff_dump(gff_t *gff, const char *fname)
         char *gene_id =  gff->init.gene_ids.str[tr->gene->id];
         const char *type = tr->type==GF_PROTEIN_CODING ? "mRNA" : gf_type2gff_string(tr->type);
         str.l = 0;
-        ksprintf(&str,"%s\t.\t%s\t%"PRIu32"\t%"PRIu32"\t.\t%c\t.\tID=%s;Parent=%s;biotype=%s;used=%d\n",itr->seq,type,itr->beg+1,itr->end+1,tr->strand==STRAND_FWD?'+':(tr->strand==STRAND_REV?'-':'.'),gff->tscript_ids.str[tr->id],gene_id,gf_type2gff_string(tr->type),tr->used);
+        ksprintf(&str,"%s\t.\t%s\t%"PRIu32"\t%"PRIu32"\t.\t%c\t.\tID=%s;Parent=%s;biotype=%s;nexons=%u;ncds=%u\n",itr->seq,type,itr->beg+1,itr->end+1,tr->strand==STRAND_FWD?'+':(tr->strand==STRAND_REV?'-':'.'),gff->tscript_ids.str[tr->id],gene_id,gf_type2gff_string(tr->type),tr->nexons,tr->ncds);
         if ( bgzf_write(out, str.s, str.l) != str.l ) error("Error writing %s: %s\n", fname, strerror(errno));
     }
     regitr_destroy(itr);
@@ -1016,7 +1092,6 @@ int gff_parse(gff_t *gff)
             if ( ftr->beg < tr->beg ) tr->beg = ftr->beg;
             if ( ftr->end > tr->end ) tr->end = ftr->end;
         }
-        tr->used = 1;
         tr->gene->used = 1;
 
         // populate regidx by category:
@@ -1029,6 +1104,7 @@ int gff_parse(gff_t *gff)
         else
             error("something: %s\t%"PRIu32"\t%"PRIu32"\t%s\t%s\n", gff->seq[ftr->iseq],ftr->beg+1,ftr->end+1,gff->tscript_ids.str[ftr->trid],gf_type2gff_string(ftr->type));
     }
+    tscript_init_exons(gff);
     tscript_init_cds(gff);
 
     if ( gff->verbosity > 0 )
@@ -1091,6 +1167,7 @@ gff_t *gff_init(const char *fname)
 {
     gff_t *gff = calloc(sizeof(gff_t),1);
     gff->fname = fname;
+    gff->link_exons = 1;
     return gff;
 }
 void gff_destroy(gff_t *gff)

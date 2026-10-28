@@ -127,7 +127,7 @@ void abuf_set(abuf_t *buf, abuf_opt_t key, void *value)
 }
 
 /*
-    Split alleles into primitivs, e.g.
+    Split alleles into primitives, e.g.
         CC>TT  becomes  C>T,C>T
         GCGT>GTGA  becomes C>T,T>A
 
@@ -168,6 +168,7 @@ static void _atomize_allele(abuf_t *buf, bcf1_t *rec, int ial)
             kputc(altb, &atom->alt);
             atom->beg = atom->end = i;
             atom->ial = ial;
+            atom->plen = 0;
 
             if ( rlen!=alen && (i+1>=rlen || i+1>=alen) )   // the next base is an indel combined with SNV, e.g. C>GGG?
             {
@@ -195,6 +196,7 @@ static void _atomize_allele(abuf_t *buf, bcf1_t *rec, int ial)
             kputc(altb, &atom->alt);
             atom->beg = atom->end = i;
             atom->ial = ial;
+            atom->plen = 0;
         }
     }
 }

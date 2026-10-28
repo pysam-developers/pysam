@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2023-2025 Genome Research Ltd.
+   Copyright (c) 2023-2026 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -237,14 +237,15 @@
 
 #define CDS_PHASE_UNKN 3
 typedef struct gf_tscript_t_ gf_tscript_t;
+typedef struct gf_exon_t_ gf_exon_t;
 typedef struct
 {
     gf_tscript_t *tr;   // transcript
+    gf_exon_t *exon;    // containing transcript exon
     uint32_t beg;       // the start coordinate of the CDS (on the reference strand, 0-based)
-    uint32_t pos;       // 0-based index of the first exon base within the transcript (only to
-                        //  update hap_node_t.sbeg in hap_init, could be calculated on the fly)
-    uint32_t len;       // exon length
-    uint32_t icds:30,   // exon index within the transcript
+    uint32_t pos;       // 0-based index of the first CDS-segment base within the transcript
+    uint32_t len;       // CDS segment length
+    uint32_t icds:30,   // CDS index within the transcript
              phase:2;   // offset of the CDS: 0,1,2 or 3 for unknown
 }
 gf_cds_t;
@@ -256,12 +257,12 @@ typedef struct
              used:1;                // does it have any exons, CDS, UTR?
 }
 gf_gene_t;
-typedef struct
+struct gf_exon_t_
 {
     uint32_t beg,end;
+    uint32_t iexon;     // 0-based exon index, respects strand orientation
     gf_tscript_t *tr;
-}
-gf_exon_t;
+};
 typedef enum { prime3, prime5 } utr_t;
 typedef struct
 {
@@ -275,10 +276,10 @@ struct gf_tscript_t_
     uint32_t id;        // transcript id
     uint32_t beg,end;   // transcript's beg and end coordinate (ref strand, 0-based, inclusive)
     uint32_t strand:2,  // STRAND_REV,FWD,UNK
-             used:1,    // does it have any exons, UTRs, CDS?
-             ncds:29,   // number of exons
+             ncds:30,   // number of CDS segments
+             nexons:30, // number of exons
              mcds;
-    gf_cds_t **cds;     // ordered list of exons
+    gf_cds_t **cds;     // list of CDS segments ordered by genomic coordinate
     uint32_t trim:2,    // complete, 5' or 3' trimmed, see TRIM_* types
              type:30;   // one of GF_* types
     gf_gene_t *gene;
@@ -289,8 +290,9 @@ typedef enum
 {
     // write options
     verbosity,          // int, 0-2
-    force_out_of_phase, // int, 1 to proceed even CDS exon out of expected phase
+    force_out_of_phase, // int, 1 to proceed even if CDS exon is out of expected phase
     dump_fname,         // const char*, dump the parsed GFF into this file, for debugging purposes
+    link_exons,         // int, 1 to make cds_t.exon and tscript_t.nexons available [1]
 
     // read options
     idx_cds,

@@ -1,6 +1,6 @@
 /*  mcall.c -- multiallelic and rare variant calling.
 
-    Copyright (C) 2012-2022 Genome Research Ltd.
+    Copyright (C) 2012-2026 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -392,7 +392,7 @@ void mcall_init(call_t *call)
     bcf_hdr_append(call->hdr,"##INFO=<ID=AC,Number=A,Type=Integer,Description=\"Allele count in genotypes for each ALT allele, in the same order as listed\">");
     bcf_hdr_append(call->hdr,"##INFO=<ID=AN,Number=1,Type=Integer,Description=\"Total number of alleles in called genotypes\">");
     bcf_hdr_append(call->hdr,"##INFO=<ID=DP4,Number=4,Type=Integer,Description=\"Number of high-quality ref-forward , ref-reverse, alt-forward and alt-reverse bases\">");
-    bcf_hdr_append(call->hdr,"##INFO=<ID=MQ,Number=1,Type=Integer,Description=\"Average mapping quality\">");
+    bcf_hdr_append(call->hdr,"##INFO=<ID=MQ,Number=1,Type=Float,Description=\"Average mapping quality\">");
     if ( call->output_tags & CALL_FMT_PV4 )
         bcf_hdr_append(call->hdr,"##INFO=<ID=PV4,Number=4,Type=Float,Description=\"P-values for strand bias, baseQ bias, mapQ bias and tail distance bias\">\n");
 
@@ -1659,9 +1659,9 @@ int mcall(call_t *call, bcf1_t *rec)
         int32_t dp[4]; dp[0] = call->anno16[0]; dp[1] = call->anno16[1]; dp[2] = call->anno16[2]; dp[3] = call->anno16[3];
         bcf_update_info_int32(call->hdr, rec, "DP4", dp, 4);
 
-        int32_t dp4_sum = call->anno16[0]+call->anno16[1]+call->anno16[2]+call->anno16[3];
-        int32_t mq = dp4_sum > 0 ? (call->anno16[8]+call->anno16[10])/dp4_sum : 0;
-        bcf_update_info_int32(call->hdr, rec, "MQ", &mq, 1);
+        float dp4_sum = call->anno16[0]+call->anno16[1]+call->anno16[2]+call->anno16[3];
+        float mq = dp4_sum > 0 ? (call->anno16[8]+call->anno16[10])/dp4_sum : 0;
+        bcf_update_info_float(call->hdr, rec, "MQ", &mq, 1);
 
         if ( call->output_tags & CALL_FMT_PV4 )
         {

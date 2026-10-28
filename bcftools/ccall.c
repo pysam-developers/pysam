@@ -1,6 +1,6 @@
 /*  ccall.c -- consensus variant calling.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2026 Genome Research Ltd.
     Portions copyright (C) 2010 Broad Institute.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
@@ -59,7 +59,7 @@ void ccall_init(call_t *call)
     // Todo: groups not migrated to 'bcftools call' yet
     bcf_hdr_append(call->hdr,"##INFO=<ID=AF2,Number=1,Type=Float,Description=\"Max-likelihood estimate of the first and second group ALT allele frequency (assuming HWE)\">");
     bcf_hdr_append(call->hdr,"##INFO=<ID=AC1,Number=1,Type=Float,Description=\"Max-likelihood estimate of the first ALT allele count (no HWE assumption)\">");
-    bcf_hdr_append(call->hdr,"##INFO=<ID=MQ,Number=1,Type=Integer,Description=\"Root-mean-square mapping quality of covering reads\">\n");
+    bcf_hdr_append(call->hdr,"##INFO=<ID=MQ,Number=1,Type=Float,Description=\"Root-mean-square mapping quality of covering reads\">\n");
     bcf_hdr_append(call->hdr,"##INFO=<ID=FQ,Number=1,Type=Float,Description=\"Phred probability of all samples being the same\">\n");
     bcf_hdr_append(call->hdr,"##INFO=<ID=PV4,Number=4,Type=Float,Description=\"P-values for strand bias, baseQ bias, mapQ bias and tail distance bias\">\n");
     bcf_hdr_append(call->hdr,"##INFO=<ID=G3,Number=3,Type=Float,Description=\"ML estimate of genotype frequencies\">\n");
@@ -122,7 +122,7 @@ static int test16_core(float anno[16], anno16_t *a)
     a->depth = anno[0] + anno[1] + anno[2] + anno[3];
     a->is_tested = (anno[0] + anno[1] > 0 && anno[2] + anno[3] > 0);
     if (a->depth == 0) return -1;
-    a->mq = (int)(sqrt((anno[9] + anno[11]) / a->depth) + .499);
+    a->mq = (sqrt((anno[9] + anno[11]) / a->depth) + .499);
     kt_fisher_exact(anno[0], anno[1], anno[2], anno[3], &left, &right, &a->p[0]);
     for (i = 1; i < 4; ++i)
         a->p[i] = ttest(anno[0] + anno[1], anno[2] + anno[3], anno+4*i);
@@ -197,7 +197,7 @@ static int update_bcf1(call_t *call, bcf1_t *rec, const bcf_p1rst_t *pr, double 
     bcf_update_info_int32(call->hdr, rec, "AC1", &pr->ac, 1);
     int32_t dp[4]; dp[0] = call->anno16[0]; dp[1] = call->anno16[1]; dp[2] = call->anno16[2]; dp[3] = call->anno16[3];
     bcf_update_info_int32(call->hdr, rec, "DP4", dp, 4);
-    bcf_update_info_int32(call->hdr, rec, "MQ", &a.mq, 1);
+    bcf_update_info_float(call->hdr, rec, "MQ", &a.mq, 1);
 
     fq = pr->p_ref_folded < 0.5? -4.343 * log(pr->p_ref_folded) : 4.343 * log(pr->p_var_folded);
     if (fq < -999) fq = -999;
@@ -233,7 +233,7 @@ static int update_bcf1(call_t *call, bcf1_t *rec, const bcf_p1rst_t *pr, double 
     // Remove unused alleles
     int nals_ori = rec->n_allele, nals = !is_var && !(call->flag & CALL_KEEPALT) ? 1 : pr->rank0 < 2? 2 : pr->rank0+1;
     if ( call->flag & CALL_KEEPALT && call->unseen==nals-1 ) nals--;
-    
+
     if ( nals<rec->n_allele )
     {
         bcf_update_alleles(call->hdr, rec, (const char**)rec->d.allele, nals);

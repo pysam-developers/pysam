@@ -56,7 +56,7 @@ void hclust_destroy(hclust_t *clust);
 /*
  *  hclust_create_list() - returns a list of clusters
  *  @min_inter_dist: minimum inter-cluster distance. If smaller, elements are considered
- *                   homogenous, belonging to the same cluster.
+ *                   homogeneous, belonging to the same cluster.
  *  @max_intra_dist: maximum intra-cluster distance allowed. If smaller than 0,
  *                   the threshold can be heuristically lowered, otherwise considered
  *                   a fixed cutoff. The pointer will be filled to the cutoff actually used.

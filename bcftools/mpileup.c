@@ -107,6 +107,7 @@ typedef struct {
     char **argv;
     int write_index;
     char *index_fn;
+    progress_t *progress;
 } mplp_conf_t;
 
 typedef struct {
@@ -561,6 +562,7 @@ static int mpileup_reg(mplp_conf_t *conf, uint32_t beg, uint32_t end)
 
     while ( (ret=bam_mplp_auto(conf->iter, &tid, &pos, conf->n_plp, conf->plp)) > 0)
     {
+        if ( conf->progress && tid>=0 ) progress_update(conf->progress, hdr->target_name[tid], pos+1);
         if ( pos<beg || pos>end ) continue;
         if ( conf->bed && tid >= 0 )
         {
@@ -1285,6 +1287,7 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
         "  -o, --output FILE       Write output to FILE [standard output]\n"
         "  -O, --output-type TYPE  'b' compressed BCF; 'u' uncompressed BCF;\n"
         "                          'z' compressed VCF; 'v' uncompressed VCF; 0-9 compression level [v]\n"
+        "      --progress[=INT]    Print the current position (CHR:POS) to stderr every INT seconds [60]\n"
         "      --threads INT       Use multithreading with INT worker threads [0]\n"
         "  -v, --verbosity INT     Verbosity level\n"
         "  -W, --write-index[=FMT] Automatically index the output files [off]\n"
@@ -1482,6 +1485,7 @@ int main_mpileup(int argc, char *argv[])
         {"no-poly-mqual", no_argument, NULL, 26},
         {"score-vs-ref",required_argument, NULL, 27},
         {"seqq-offset", required_argument, NULL, 28},
+        {"progress", optional_argument, NULL, 29},
         {"verbosity",required_argument,NULL,'v'},
         {NULL, 0, NULL, 0}
     };
@@ -1535,6 +1539,7 @@ int main_mpileup(int argc, char *argv[])
         case  7 : noref = 1; break;
         case  8 : mplp.record_cmd_line = 0; break;
         case  9 : mplp.n_threads = strtol(optarg, 0, 0); break;
+        case 29 : mplp.progress = progress_init("mpileup", optarg); break;
         case 'd': mplp.max_depth = atoi(optarg); break;
         case 'r': mplp.reg_fname = strdup(optarg); break;
         case 'R': mplp.reg_fname = strdup(optarg); mplp.reg_is_file = 1; break;
@@ -1843,6 +1848,7 @@ int main_mpileup(int argc, char *argv[])
     if (mplp.bed) regidx_destroy(mplp.bed);
     if (mplp.bed_itr) regitr_destroy(mplp.bed_itr);
     if (mplp.reg) regidx_destroy(mplp.reg);
+    free(mplp.progress);
 
  err:
     bam_smpl_destroy(mplp.bsmpl);

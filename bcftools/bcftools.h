@@ -79,6 +79,14 @@ char *init_tmp_prefix(const char *prefix);
 int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq);
 int parse_overlap_option(const char *arg);
 
+// Simple progress meter which prints the current position (CHR:POS) to stderr for the
+// first record and then at most once every `interval` seconds. The interval is the raw
+// command line string (optarg): NULL for the default of 60 seconds, "0" to print at
+// every record. Destroy with free()
+typedef struct _progress_t progress_t;
+progress_t *progress_init(const char *cmd, const char *interval);
+void progress_update(progress_t *prg, const char *chr, hts_pos_t pos);
+
 // make random seed which safe for parallelization
 static inline uint32_t make_seed(void)
 {
