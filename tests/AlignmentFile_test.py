@@ -936,6 +936,55 @@ class TestMultiThread:
             pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex1.bam'), threads=2, ignore_truncation=True)
 
 
+class TestSharedThreadPool:
+    def testFilesSharingPoolRoundTrip(self, tmp_path):
+        input_bam = os.path.join(BAM_DATADIR, 'ex1.bam')
+        pool = pysam.ThreadPool(2)
+        assert pool.threads == 2
+        out_paths = [tmp_path / "a.bam", tmp_path / "b.bam"]
+        with pysam.AlignmentFile(input_bam, 'rb', thread_pool=pool) as samfile:
+            reads = list(samfile)
+            with pysam.AlignmentFile(out_paths[0], 'wb', template=samfile,
+                                     thread_pool=pool) as out_a, \
+                 pysam.AlignmentFile(out_paths[1], 'wb', template=samfile,
+                                     thread_pool=pool) as out_b:
+                assert out_a.thread_pool is pool
+                for read in reads:
+                    out_a.write(read)
+                    out_b.write(read)
+        expected = [read.to_string() for read in reads]
+        for out_path in out_paths:
+            with pysam.AlignmentFile(out_path, thread_pool=pool) as written:
+                assert [read.to_string() for read in written] == expected
+
+    def testPoolOutlivesDroppedReference(self, tmp_path):
+        input_bam = os.path.join(BAM_DATADIR, 'ex1.bam')
+        with pysam.AlignmentFile(input_bam) as samfile:
+            reads = list(samfile)
+            out = pysam.AlignmentFile(tmp_path / "out.bam", 'wb', template=samfile,
+                                      thread_pool=pysam.ThreadPool(2))
+        for read in reads:
+            out.write(read)
+        out.close()
+        with pysam.AlignmentFile(tmp_path / "out.bam") as written:
+            assert len(list(written)) == len(reads)
+
+    def testRejectsThreadsWithPool(self):
+        with pytest.raises(ValueError):
+            pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex1.bam'),
+                                threads=2, thread_pool=pysam.ThreadPool(2))
+
+    def testRejectsIgnoreTruncationWithPool(self):
+        with pytest.raises(ValueError):
+            pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex1.bam'),
+                                ignore_truncation=True,
+                                thread_pool=pysam.ThreadPool(2))
+
+    def testRejectsInvalidPoolSize(self):
+        with pytest.raises(ValueError):
+            pysam.ThreadPool(0)
+
+
 class TestExceptions:
     def setup_method(self):
         self.samfile = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex1.bam"), "rb")

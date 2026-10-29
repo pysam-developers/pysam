@@ -1536,6 +1536,16 @@ cdef extern from "htslib/vcfutils.h" nogil:
     uint32_t bcf_ij2G(uint32_t i, uint32_t j)
 
 
+cdef extern from "htslib/thread_pool.h" nogil:
+    hts_tpool *hts_tpool_init(int n)
+    int hts_tpool_size(hts_tpool *p)
+    void hts_tpool_destroy(hts_tpool *p)
+
+
+cdef class ThreadPool(object):
+    cdef htsThreadPool p                 # shared pool and per-file queue size
+
+
 cdef class HTSFile(object):
     cdef          htsFile *htsfile       # pointer to htsFile structure
     cdef          int64_t start_offset   # BGZF offset of first record
@@ -1543,6 +1553,7 @@ cdef class HTSFile(object):
     cdef readonly object  filename       # filename as supplied by user
     cdef readonly object  mode           # file opening mode
     cdef readonly object  threads        # number of threads to use
+    cdef readonly object  thread_pool    # shared ThreadPool, or None
     cdef readonly object  index_filename # filename of index, if supplied by user
 
     cdef readonly bint    is_stream      # Is htsfile a non-seekable stream
