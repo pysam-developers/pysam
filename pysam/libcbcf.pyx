@@ -4817,10 +4817,8 @@ cdef class VariantFile(HTSFile):
                 raise StopIteration
             elif ret == -2:
                 raise IOError('truncated file')
-            elif errno:
-                raise OSError_from_errno("Unable to fetch next record", self.filename)
             else:
-                raise IOError('unable to fetch next record')
+                raise OSError_from_errno("Unable to fetch next record", self.filename)
 
         return makeVariantRecord(self.header, record)
 
@@ -4965,10 +4963,7 @@ cdef class VariantFile(HTSFile):
             self.htsfile = self._open_htsfile()
 
             if not self.htsfile:
-                if errno:
-                    raise OSError_from_errno("Could not open variant file", filename)
-                else:
-                    raise ValueError('could not open variant file `{}`'.format(filename))
+                raise OSError_from_errno("Could not open variant file", filename)
 
             fmt = hts_get_format(self.htsfile)
             if fmt.format not in (bcf, vcf):

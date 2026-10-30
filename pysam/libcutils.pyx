@@ -198,7 +198,8 @@ cdef decode_bytes(bytes s, encoding=None, errors=None):
 cdef OSError_from_errno(message, filename=None):
     cdef int err = errno
     if filename is not None: filename = os.fsdecode(filename)
-    return OSError(err, f"{message}: {strerror(err).decode()}", filename)
+    if err != 0: return OSError(err, f"{message}: {strerror(err).decode()}", filename)
+    else: return OSError(f"{message}: {filename!r}") if filename else OSError(message)
 
 
 cpdef parse_region(contig=None,
