@@ -82,7 +82,8 @@ cdef class AlignedSegment:
 
 cdef class _PileupBuffer:  # For internal use only
     # current pileup of an IteratorColumn, shared with the PileupColumns it
-    # creates. Set to NULL when the iterator's pileup buffer is freed.
+    # creates. Set to NULL when the iterator's pileup buffer is freed
+    # or replaced.
     cdef const bam_pileup1_t * plp
 
 cdef class PileupColumn:

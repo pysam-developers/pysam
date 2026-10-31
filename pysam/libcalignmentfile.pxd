@@ -115,6 +115,7 @@ cdef class IteratorColumn:
 
     cdef reset(self, tid, start, stop)
     cdef _free_pileup_iter(self)
+    cdef _new_buffer(self)
     # backwards compatibility
     cdef char * getSequence(self)
 

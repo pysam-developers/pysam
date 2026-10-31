@@ -2538,6 +2538,7 @@ cdef class IteratorColumn:
         # Free any previously allocated memory before reassigning
         # pileup_iter
         self._free_pileup_iter()
+        self._new_buffer()
 
         cdef void * data[1]
         data[0] = <void*>&self.iterdata
@@ -2581,6 +2582,7 @@ cdef class IteratorColumn:
         # Free any previously allocated memory before reassigning
         # pileup_iter
         self._free_pileup_iter()
+        self._new_buffer()
 
         cdef void * data[1]
         data[0] = <void*>&self.iterdata
@@ -2644,6 +2646,17 @@ cdef class IteratorColumn:
                 bam_mplp_reset(self.pileup_iter)
                 bam_mplp_destroy(self.pileup_iter)
                 self.pileup_iter = <bam_mplp_t>NULL
+
+    cdef _new_buffer(self):
+        '''detach the PileupColumns created so far, which then raise
+        ValueError, and share a new _PileupBuffer with the following ones.
+
+        This is needed whenever the pileup buffer is replaced, as the
+        new buffer can be smaller than the old columns expect.'''
+        cdef _PileupBuffer buffer = _PileupBuffer()
+        buffer.plp = self.buffer.plp
+        self.buffer.plp = NULL
+        self.buffer = buffer
 
     def __dealloc__(self):
         # reset in order to avoid memory leak messages for iterators
