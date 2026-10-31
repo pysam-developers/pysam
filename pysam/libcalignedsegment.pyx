@@ -608,7 +608,6 @@ cdef PileupColumn makePileupColumn(_PileupBuffer buffer,
                       int pos,
                       int n_pu,
                       uint32_t min_base_quality,
-                      char * reference_sequence,
                       AlignmentHeader header):
     '''return a PileupColumn object constructed from pileup in `buffer` and
     setting additional attributes.
@@ -622,7 +621,6 @@ cdef PileupColumn makePileupColumn(_PileupBuffer buffer,
     dest.pos = pos
     dest.n_pu = n_pu
     dest.min_base_quality = min_base_quality
-    dest.reference_sequence = reference_sequence
     dest.buf.l = dest.buf.m = 0
     dest.buf.s = NULL
 
@@ -3186,6 +3184,7 @@ cdef class PileupColumn:
         if self.buffer is None or self.buffer.plp == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
 
+        cdef char * reference_sequence = self.buffer.seq
         buf.l = 0
 
         # todo: reference sequence to count matches/mismatches
@@ -3212,8 +3211,8 @@ cdef class PileupColumn:
                 else:
                     cc = b'N'
 
-                if mark_matches and self.reference_sequence != NULL:
-                    rb = self.reference_sequence[self.reference_pos]
+                if mark_matches and reference_sequence != NULL:
+                    rb = reference_sequence[self.reference_pos]
                     if seq_nt16_table[cc] == seq_nt16_table[rb]:
                         cc = b'='
                 kputc(strand_mark_char(cc, p.b), buf)
@@ -3237,10 +3236,10 @@ cdef class PileupColumn:
                     kputw(-p.indel, buf)
                     for j from 1 <= j <= -p.indel:
                         # TODO: out-of-range check here?
-                        if self.reference_sequence == NULL:
+                        if reference_sequence == NULL:
                             cc = b'N'
                         else:
-                            cc = self.reference_sequence[self.reference_pos + j]
+                            cc = reference_sequence[self.reference_pos + j]
                         kputc(strand_mark_char(cc, p.b), buf)
             if mark_ends and p.is_tail:
                 kputc(b'$', buf)

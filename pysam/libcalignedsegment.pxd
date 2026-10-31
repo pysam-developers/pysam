@@ -81,10 +81,12 @@ cdef class AlignedSegment:
 
 
 cdef class _PileupBuffer:  # For internal use only
-    # current pileup of an IteratorColumn, shared with the PileupColumns it
-    # creates. Set to NULL when the iterator's pileup buffer is freed
-    # or replaced.
+    # current pileup and reference sequence of an IteratorColumn, shared
+    # with the PileupColumns it creates. Set to NULL when the iterator's
+    # pileup buffer or reference sequence is freed or replaced.
     cdef const bam_pileup1_t * plp
+    cdef char * seq
+    cdef int seq_tid
 
 cdef class PileupColumn:
     cdef _PileupBuffer buffer
@@ -94,7 +96,6 @@ cdef class PileupColumn:
     cdef AlignmentHeader header
     cdef uint32_t min_base_quality
     cdef kstring_t buf
-    cdef char * reference_sequence
 
 cdef class PileupRead:
     cdef int32_t  _qpos
@@ -117,7 +118,6 @@ cdef PileupColumn makePileupColumn(
     int pos,
     int n_pu,
     uint32_t min_base_quality,
-    char * reference_sequence,
     AlignmentHeader header)
 
 cdef PileupRead makePileupRead(const bam_pileup1_t * src,

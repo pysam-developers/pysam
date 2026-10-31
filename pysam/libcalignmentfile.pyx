@@ -2490,6 +2490,10 @@ cdef class IteratorColumn:
                                      &self.pos,
                                      &self.n_plp,
                                      &self.buffer.plp)
+        # the call-backs free and replace the reference sequence
+        # when they read the first read on another reference
+        if self.iterdata.tid != self.buffer.seq_tid:
+            self._new_buffer()
         return ret
 
     cdef char * get_sequence(self):
@@ -2508,8 +2512,10 @@ cdef class IteratorColumn:
        self.fastafile = fastafile
        if self.iterdata.seq != NULL:
            free(self.iterdata.seq)
+       self.iterdata.seq = NULL
        self.iterdata.tid = -1
        self.iterdata.fastafile = self.fastafile.fastafile
+       self._new_buffer()
 
     def has_reference(self):
         '''
@@ -2626,6 +2632,7 @@ cdef class IteratorColumn:
                 free(self.iterdata.seq)
             self.iterdata.seq = NULL
             self.iterdata.tid = -1
+            self._new_buffer()
 
         # self.pileup_iter = bam_mplp_init(1
         #                                  &__advancepileup,
@@ -2652,10 +2659,14 @@ cdef class IteratorColumn:
         ValueError, and share a new _PileupBuffer with the following ones.
 
         This is needed whenever the pileup buffer is replaced, as the
-        new buffer can be smaller than the old columns expect.'''
+        new buffer can be smaller than the old columns expect, and
+        whenever the reference sequence is freed.'''
         cdef _PileupBuffer buffer = _PileupBuffer()
         buffer.plp = self.buffer.plp
+        buffer.seq = self.iterdata.seq
+        buffer.seq_tid = self.iterdata.tid
         self.buffer.plp = NULL
+        self.buffer.seq = NULL
         self.buffer = buffer
 
     def __dealloc__(self):
@@ -2664,6 +2675,7 @@ cdef class IteratorColumn:
         self._free_pileup_iter()
         if self.buffer is not None:
             self.buffer.plp = NULL
+            self.buffer.seq = NULL
 
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)
@@ -2725,7 +2737,6 @@ cdef class IteratorColumnRegion(IteratorColumn):
                                     self.pos,
                                     self.n_plp,
                                     self.min_base_quality,
-                                    self.iterdata.seq,
                                     self.samfile.header)
 
 
@@ -2767,7 +2778,6 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                                     self.pos,
                                     self.n_plp,
                                     self.min_base_quality,
-                                    self.iterdata.seq,
                                     self.samfile.header)
 
 
@@ -2796,7 +2806,6 @@ cdef class IteratorColumnAll(IteratorColumn):
                                 self.pos,
                                 self.n_plp,
                                 self.min_base_quality,
-                                self.iterdata.seq,
                                 self.samfile.header)
 
 
