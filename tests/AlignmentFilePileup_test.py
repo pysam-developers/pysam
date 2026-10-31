@@ -1,7 +1,6 @@
 """Benchmarking module for AlignmentFile functionality"""
 import os
 import pysam
-import sys
 import pytest
 
 from TestUtils import make_data_files, BAM_DATADIR, force_str, flatten_nested_list
@@ -174,8 +173,6 @@ class TestPileupObjects:
     def teardown_method(self):
         self.samfile.close()
 
-    @pytest.mark.skipif(sys.version_info[:2] == (3, 11) or sys.platform.startswith("netbsd"),
-                        reason="exercises invalid accesses, which crashes on Python 3.11 and NetBSD")
     def testIteratorOutOfScope(self):
         '''test if exception is raised if pileup col is accessed after
         iterator is exhausted.'''
@@ -295,7 +292,6 @@ class TestIteratorColumn2:
         assert len(columns) == 3
         assert columns == [169, 170, 171]
 
-    @pytest.mark.skipif(sys.platform.startswith("netbsd"), reason="exercises invalid accesses, crashing on NetBSD")
     def testAccessOnClosedIterator(self):
         '''see issue 131
 

@@ -3,8 +3,8 @@ from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 
 from pysam.libcfaidx cimport FastaFile
-from pysam.libcalignedsegment cimport AlignedSegment
-from pysam.libchtslib cimport bam_hdr_t, bam_mplp_t, bam_pileup1_t, bam1_t, faidx_t, \
+from pysam.libcalignedsegment cimport AlignedSegment, _PileupBuffer
+from pysam.libchtslib cimport bam_hdr_t, bam_mplp_t, bam1_t, faidx_t, \
     hts_idx_t, hts_itr_t, htsFile, HTSFile
 
 ####################################################################
@@ -95,7 +95,7 @@ cdef class IteratorColumn:
     cdef int pos
     cdef int n_plp
     cdef uint32_t min_base_quality
-    cdef const bam_pileup1_t * plp
+    cdef _PileupBuffer buffer
     cdef bam_mplp_t pileup_iter
     cdef __iterdata iterdata
     cdef AlignmentFile samfile

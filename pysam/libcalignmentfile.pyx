@@ -2475,7 +2475,7 @@ cdef class IteratorColumn:
         self.tid = 0
         self.pos = 0
         self.n_plp = 0
-        self.plp = NULL
+        self.buffer = _PileupBuffer()
         self.pileup_iter = <bam_mplp_t>NULL
 
     def __iter__(self):
@@ -2489,7 +2489,7 @@ cdef class IteratorColumn:
                                      &self.tid,
                                      &self.pos,
                                      &self.n_plp,
-                                     &self.plp)
+                                     &self.buffer.plp)
         return ret
 
     cdef char * get_sequence(self):
@@ -2637,6 +2637,9 @@ cdef class IteratorColumn:
         This is needed before setup_iterator allocates another
         pileup_iter, or else memory will be lost.  '''
         if self.pileup_iter != <bam_mplp_t>NULL:
+            # columns must not read the pileup buffer freed below
+            if self.buffer is not None:
+                self.buffer.plp = NULL
             with nogil:
                 bam_mplp_reset(self.pileup_iter)
                 bam_mplp_destroy(self.pileup_iter)
@@ -2646,7 +2649,8 @@ cdef class IteratorColumn:
         # reset in order to avoid memory leak messages for iterators
         # that have not been fully consumed
         self._free_pileup_iter()
-        self.plp = <const bam_pileup1_t*>NULL
+        if self.buffer is not None:
+            self.buffer.plp = NULL
 
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)
@@ -2703,7 +2707,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
                 if self.pos >= self.stop:
                     raise StopIteration
 
-            return makePileupColumn(&self.plp,
+            return makePileupColumn(self.buffer,
                                     self.tid,
                                     self.pos,
                                     self.n_plp,
@@ -2745,7 +2749,7 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                 continue
 
             # return result, if within same reference
-            return makePileupColumn(&self.plp,
+            return makePileupColumn(self.buffer,
                                     self.tid,
                                     self.pos,
                                     self.n_plp,
@@ -2774,7 +2778,7 @@ cdef class IteratorColumnAll(IteratorColumn):
         if n == 0:
             raise StopIteration
 
-        return makePileupColumn(&self.plp,
+        return makePileupColumn(self.buffer,
                                 self.tid,
                                 self.pos,
                                 self.n_plp,

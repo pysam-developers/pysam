@@ -80,8 +80,13 @@ cdef class AlignedSegment:
     cpdef tostring(self, htsfile=*)
 
 
+cdef class _PileupBuffer:  # For internal use only
+    # current pileup of an IteratorColumn, shared with the PileupColumns it
+    # creates. Set to NULL when the iterator's pileup buffer is freed.
+    cdef const bam_pileup1_t * plp
+
 cdef class PileupColumn:
-    cdef const bam_pileup1_t ** plp
+    cdef _PileupBuffer buffer
     cdef int tid
     cdef int pos
     cdef int n_pu
@@ -106,7 +111,7 @@ cdef AlignedSegment makeAlignedSegment(
     AlignmentHeader header)
 
 cdef PileupColumn makePileupColumn(
-    const bam_pileup1_t ** plp,
+    _PileupBuffer buffer,
     int tid,
     int pos,
     int n_pu,

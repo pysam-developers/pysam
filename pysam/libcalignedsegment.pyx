@@ -603,21 +603,21 @@ cdef AlignedSegment makeAlignedSegment(bam1_t *src,
 
 
 cdef class PileupColumn
-cdef PileupColumn makePileupColumn(const bam_pileup1_t ** plp,
+cdef PileupColumn makePileupColumn(_PileupBuffer buffer,
                       int tid,
                       int pos,
                       int n_pu,
                       uint32_t min_base_quality,
                       char * reference_sequence,
                       AlignmentHeader header):
-    '''return a PileupColumn object constructed from pileup in `plp` and
+    '''return a PileupColumn object constructed from pileup in `buffer` and
     setting additional attributes.
 
     '''
     # note that the following does not call __init__
     cdef PileupColumn dest = PileupColumn.__new__(PileupColumn)
     dest.header = header
-    dest.plp = plp
+    dest.buffer = buffer
     dest.tid = tid
     dest.pos = pos
     dest.n_pu = n_pu
@@ -2981,6 +2981,10 @@ cdef class AlignedSegment:
         return self.set_tag(tag, value, value_type, replace)
 
 
+cdef class _PileupBuffer:
+    pass
+
+
 cdef class PileupColumn:
     '''A pileup of reads at a particular reference sequence position
     (:term:`column`). A pileup column contains all the reads that map
@@ -3045,7 +3049,7 @@ cdef class PileupColumn:
     property pileups:
         '''list of reads (:class:`pysam.PileupRead`) aligned to this column'''
         def __get__(self):
-            if self.plp == NULL or self.plp[0] == NULL:
+            if self.buffer is None or self.buffer.plp == NULL:
                 raise ValueError("PileupColumn accessed after iterator finished")
 
             cdef int x
@@ -3055,7 +3059,7 @@ cdef class PileupColumn:
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
             for x from 0 <= x < self.n_pu:
-                p = &(self.plp[0][x])
+                p = &(self.buffer.plp[x])
                 if p == NULL:
                     raise ValueError(
                         "pileup buffer out of sync - most likely use of iterator "
@@ -3102,11 +3106,11 @@ cdef class PileupColumn:
         cdef uint32_t c = 0
         cdef uint32_t cnt = 0
         cdef const bam_pileup1_t * p = NULL
-        if self.plp == NULL or self.plp[0] == NULL:
+        if self.buffer is None or self.buffer.plp == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
 
         for x from 0 <= x < self.n_pu:
-            p = &(self.plp[0][x])
+            p = &(self.buffer.plp[x])
             if p == NULL:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
@@ -3179,7 +3183,7 @@ cdef class PileupColumn:
         cdef kstring_t * buf = &self.buf
         cdef const bam_pileup1_t * p = NULL
 
-        if self.plp == NULL or self.plp[0] == NULL:
+        if self.buffer is None or self.buffer.plp == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
 
         buf.l = 0
@@ -3187,7 +3191,7 @@ cdef class PileupColumn:
         # todo: reference sequence to count matches/mismatches
         # todo: convert assertions to exceptions
         for x from 0 <= x < self.n_pu:
-            p = &(self.plp[0][x])
+            p = &(self.buffer.plp[x])
             if p == NULL:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
@@ -3262,9 +3266,12 @@ cdef class PileupColumn:
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
         cdef uint32_t c = 0
+        if self.buffer is None or self.buffer.plp == NULL:
+            raise ValueError("PileupColumn accessed after iterator finished")
+
         result = []
         for x from 0 <= x < self.n_pu:
-            p = &(self.plp[0][x])
+            p = &(self.buffer.plp[x])
             if p == NULL:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
@@ -3287,14 +3294,14 @@ cdef class PileupColumn:
 
         a list of quality scores : list
         """
-        if self.plp == NULL or self.plp[0] == NULL:
+        if self.buffer is None or self.buffer.plp == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
 
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
-            p = &(self.plp[0][x])
+            p = &(self.buffer.plp[x])
             if p == NULL:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
@@ -3313,14 +3320,14 @@ cdef class PileupColumn:
 
         a list of read positions : list
         """
-        if self.plp == NULL or self.plp[0] == NULL:
+        if self.buffer is None or self.buffer.plp == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
 
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
-            p = &(self.plp[0][x])
+            p = &(self.buffer.plp[x])
             if p == NULL:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
@@ -3339,14 +3346,14 @@ cdef class PileupColumn:
 
         a list of query names at pileup column position. : list
         """
-        if self.plp == NULL or self.plp[0] == NULL:
+        if self.buffer is None or self.buffer.plp == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
 
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
-            p = &(self.plp[0][x])
+            p = &(self.buffer.plp[x])
             if p == NULL:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
