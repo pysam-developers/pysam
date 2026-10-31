@@ -811,6 +811,7 @@ Topic :: Scientific/Engineering
 Operating System :: POSIX
 Operating System :: Unix
 Operating System :: MacOS
+Operating System :: Microsoft :: Windows
 """
 
 metadata = {
@@ -822,7 +823,7 @@ metadata = {
     'author': "Andreas Heger",
     'author_email': "andreas.heger@gmail.com",
     'license': "MIT",
-    'platforms': ["POSIX", "UNIX", "MacOS"],
+    'platforms': ["POSIX", "UNIX", "MacOS", "Windows"],
     'classifiers': [_f for _f in classifiers.split("\n") if _f],
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,

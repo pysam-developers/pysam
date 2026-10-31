@@ -88,6 +88,54 @@ To install from repository, type::
 
 For compilation options, see the section on PyPI installation above.
 
+Windows
+=======
+
+``pip install pysam`` installs a pre-built wheel on 64-bit x86 Windows
+for Python 3.9 and later. The wheel needs no other software: htslib and
+the libraries it uses are linked into pysam's modules. Remote files
+(``https://``, ``s3://``, ``gs://``) are supported, and HTTPS
+certificates are checked against the Windows certificate store.
+
+Building from source on Windows
+-------------------------------
+
+pysam is built with MinGW-w64 from MSYS2_; Microsoft Visual C++ is not
+supported. The build uses MSYS2's UCRT64 environment and a regular
+Windows CPython, for example from python.org.
+
+1. Install MSYS2_ and, in an MSYS2 shell, install the build
+   prerequisites::
+
+      pacman -S --needed make mingw-w64-ucrt-x86_64-gcc \
+          mingw-w64-ucrt-x86_64-bzip2 mingw-w64-ucrt-x86_64-libsystre \
+          mingw-w64-ucrt-x86_64-xz mingw-w64-ucrt-x86_64-zlib
+
+   For remote file support, also install
+   ``mingw-w64-ucrt-x86_64-curl-winssl`` and ``mingw-w64-ucrt-x86_64-pkgconf``.
+
+2. Open a UCRT64 shell that keeps the Windows ``PATH``, so that your
+   Windows Python can be found, by setting ``MSYS2_PATH_TYPE=inherit``
+   before starting it (or with ``msys2_shell.cmd -ucrt64 -use-full-path``).
+
+3. Build and install pysam as usual, using the Windows Python::
+
+      pip install .
+
+   or ``python setup.py build`` from a checkout. pysam selects the
+   MinGW-w64 compiler on Windows automatically.
+
+The resulting modules are statically linked, so they do not need MSYS2's
+DLLs at run time.
+
+When pysam is imported on Windows it ignores ``SIGTERM``, if the
+application has not set a handler for it. htslib raises ``SIGTERM`` in
+place of ``SIGPIPE`` when writing to a pipe whose reader has exited, and
+ignoring it makes such writes fail with an error, as they do on other
+platforms, rather than ending the process.
+
+.. _MSYS2: https://www.msys2.org/
+
 Requirements
 ============
 
