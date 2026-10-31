@@ -3184,7 +3184,12 @@ cdef class PileupColumn:
         if self.buffer is None or self.buffer.plp == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
 
-        cdef char * reference_sequence = self.buffer.seq
+        # the iterator may already have loaded the sequence of the next
+        # reference when it returns the last columns of this one
+        cdef char * reference_sequence = NULL
+        if self.buffer.seq_tid == self.tid:
+            reference_sequence = self.buffer.seq
+
         buf.l = 0
 
         # todo: reference sequence to count matches/mismatches
