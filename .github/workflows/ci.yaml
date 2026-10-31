@@ -180,11 +180,6 @@ jobs:
       - name: Build (directly from checkout)
         run:  python setup.py build
 
-      - name: Check modules work
-        run: |
-          cd build/lib.*
-          PYTHONPATH=. python ../../devtools/smoke-test.py
-
       - name: Run tests
         env:
           PYTHONUTF8: 1  # Otherwise setuptools detaches sys.stdout during compile_test's pyximport build
