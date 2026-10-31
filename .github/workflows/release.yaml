@@ -51,6 +51,8 @@ jobs:
             mingw-w64-ucrt-x86_64-libsystre
             mingw-w64-ucrt-x86_64-xz
             mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-curl-winssl
+            mingw-w64-ucrt-x86_64-pkgconf
 
       - name: Put MSYS2 tools on PATH for cibuildwheel
         if:   runner.os == 'Windows'

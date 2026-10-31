@@ -168,7 +168,7 @@ jobs:
             mingw-w64-ucrt-x86_64-libsystre
             mingw-w64-ucrt-x86_64-xz
             mingw-w64-ucrt-x86_64-zlib
-            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-curl-winssl
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-bcftools
             mingw-w64-ucrt-x86_64-htslib
