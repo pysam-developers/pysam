@@ -13,12 +13,19 @@ jobs:
   build_wheels:
     runs-on: ${{ case(matrix.kind == 'macos',
                       case(matrix.arch == 'arm', 'macos-latest', 'macos-15-intel'),
-                      case(matrix.arch == 'arm', 'ubuntu-24.04-arm', 'ubuntu-latest')) }}
+                      case(matrix.kind == 'windows', 'windows-latest',
+                           case(matrix.arch == 'arm', 'ubuntu-24.04-arm', 'ubuntu-latest'))) }}
     strategy:
       matrix:
-        kind: [macos, many, musl]
+        kind: [macos, many, musl, windows]
         arch: [arm, intel]
         build: ["cp39-* cp310-* cp311-*", "cp312-* cp313-*", "cp314-* cp315-*"]
+        exclude:
+          - kind: windows
+            arch: arm
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout pysam
@@ -30,6 +37,27 @@ jobs:
         run:  devtools/check-platform.sh
         env:
           EXPECTED_ARCH: ${{ matrix.arch }}
+
+      - name: Set up MSYS2 and MinGW-w64 build prerequisites
+        id:   msys2
+        if:   runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-bzip2
+            mingw-w64-ucrt-x86_64-libsystre
+            mingw-w64-ucrt-x86_64-xz
+            mingw-w64-ucrt-x86_64-zlib
+
+      - name: Put MSYS2 tools on PATH for cibuildwheel
+        if:   runner.os == 'Windows'
+        run: |
+          echo '${{ steps.msys2.outputs.msys2-location }}\usr\bin' >> $GITHUB_PATH
+          echo '${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin' >> $GITHUB_PATH
+          echo MSYSTEM=UCRT64 >> $GITHUB_ENV
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v4.2.1

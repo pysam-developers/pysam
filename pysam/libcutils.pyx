@@ -378,14 +378,14 @@ def _pysam_dispatch(collection,
             os.close(stdout_h)
             stdout_f_bytes = force_bytes(stdout_f)
             args.extend(stdout_option.format(stdout_f).split(" "))
-            stdout_h = c_open(b"/dev/null", O_WRONLY)
+            stdout_h = c_open(force_bytes(os.devnull), O_WRONLY)
         else:
             stdout_f_bytes = None
 
     else:
         stdout_f_bytes = b"-"
         if catch_stdout is None: stdout_h = c_dup(STDOUT_FILENO)
-        else: stdout_h = c_open(b"/dev/null", O_WRONLY)
+        else: stdout_h = c_open(force_bytes(os.devnull), O_WRONLY)
 
     # setup the function call to samtools/bcftools main
     cdef char ** cargs

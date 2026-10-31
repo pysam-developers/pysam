@@ -34,6 +34,12 @@ before-build = "make -C {project}/htslib distclean"
 test-requires = ["pytest"]
 test-command = "pytest {project}/tests"
 
+[tool.cibuildwheel.windows]
+before-all = ""  # Prerequisites come from MSYS2, set up in release.yaml
+# Modules are linked statically, so there are no DLLs for delvewheel to bundle
+repair-wheel-command = ""
+test-command = "python {project}/devtools/smoke-test.py"
+
 [tool.pytest.ini_options]
 # -s: do not capture stdout, conflicts with pysam.dispatch
 # -v: verbose output

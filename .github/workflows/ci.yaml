@@ -136,6 +136,51 @@ jobs:
         run:  PYTHONPATH="$(echo $PWD/build/lib.*)" $pytest
 
 
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13', '3.14', '3.15']
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout pysam
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up MSYS2 and MinGW-w64 build prerequisites
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit  # Use the Python installed above
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-bzip2
+            mingw-w64-ucrt-x86_64-libsystre
+            mingw-w64-ucrt-x86_64-xz
+            mingw-w64-ucrt-x86_64-zlib
+
+      - name: Install prerequisite Python libraries
+        run:  python -m pip install Cython setuptools
+
+      - name: Build (directly from checkout)
+        run:  python setup.py build
+
+      - name: Check modules work
+        run: |
+          cd build/lib.*
+          PYTHONPATH=. python ../../devtools/smoke-test.py
+
+
   sdist:
     runs-on: ${{ matrix.os }}-latest
     strategy:
