@@ -566,6 +566,12 @@ if HTSLIB_MODE in ['shared', 'separate']:
         # MSYS2's static libregex.a wraps TRE, which is not listed in htslib's LIBS
         external_htslib_libraries.extend(["tre", "intl", "iconv"])
 
+    if sys.platform == "win32" and "curl" in external_htslib_libraries:
+        # Static libcurl needs CURL_STATICLIB and its own dependencies, which htslib's LIBS omits
+        define_macros.append(("CURL_STATICLIB", None))
+        curl_libs = subprocess.check_output(["pkg-config", "--static", "--libs-only-l", "libcurl"], encoding="ascii")
+        external_htslib_libraries.extend([re.sub("^-l", "", x) for x in curl_libs.split()])
+
     for_redistribution = truthy(os.environ.get("CIBUILDWHEEL", "0"))
 
     if for_redistribution:
@@ -662,6 +668,11 @@ extra_compile_args.extend([
 if sys.platform == "win32" and sys.maxsize > 2**32:
     # Before Python 3.12, pyconfig.h defines this only for MSVC, not MinGW
     define_macros.append(("MS_WIN64", None))
+
+if sys.platform == "win32":
+    # htslib's config.h sets this, but samtools/bcftools sources include system headers
+    # before config.h, and MinGW's off_t and struct stat depend on it, so set it first
+    define_macros.append(("_FILE_OFFSET_BITS", "64"))
 
 suffix = sysconfig.get_config_var('EXT_SUFFIX')
 

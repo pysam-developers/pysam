@@ -168,9 +168,14 @@ jobs:
             mingw-w64-ucrt-x86_64-libsystre
             mingw-w64-ucrt-x86_64-xz
             mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-bcftools
+            mingw-w64-ucrt-x86_64-htslib
+            mingw-w64-ucrt-x86_64-samtools
 
       - name: Install prerequisite Python libraries
-        run:  python -m pip install Cython setuptools
+        run:  python -m pip install Cython pytest setuptools
 
       - name: Build (directly from checkout)
         run:  python setup.py build
@@ -179,6 +184,9 @@ jobs:
         run: |
           cd build/lib.*
           PYTHONPATH=. python ../../devtools/smoke-test.py
+
+      - name: Run tests
+        run:  PYTHONPATH="$(cygpath -w "$(echo $PWD/build/lib.*)")" pytest
 
 
   sdist:

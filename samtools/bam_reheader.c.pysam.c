@@ -629,7 +629,7 @@ int main_reheader(int argc, char *argv[])
             print_error("reheader", "cannot reheader BAM '%s' in-place", argv[optind+1]);
             r = -1;
         } else {
-            r = bam_reheader(in->fp.bgzf, h, fileno(samtools_stdout), arg_list, no_pg, skip_header);
+            r = bam_reheader(in->fp.bgzf, h, dup(fileno(samtools_stdout)), arg_list, no_pg, skip_header);
         }
     } else if (hts_get_format(in)->format == cram) {
         if (inplace)
