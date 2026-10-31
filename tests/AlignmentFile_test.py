@@ -1765,6 +1765,10 @@ class TestLogging:
         assert True
 
     def teardown_method(self):
+        logger = logging.getLogger('franklin')
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+            handler.close()  # Windows cannot remove log.txt while it is open
         if os.path.exists('log.txt'):
             os.unlink('log.txt')
 

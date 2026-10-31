@@ -112,7 +112,11 @@ def _update_pysam_files(cf, destdir):
                         'putc("ACGT"[f->seq[j] == 1? (c&3) : (c>>16&3)], {}_stdout);'.format(basename)),
                     "cut_target.c": (
                         'putc(33 + (cns[j]>>8>>2, {}_stdout));'.format(basename),
-                        'putc(33 + (cns[j]>>8>>2), {}_stdout);'.format(basename))
+                        'putc(33 + (cns[j]>>8>>2), {}_stdout);'.format(basename)),
+                    # bam_reheader() closes this fd, so give it a dup rather than {}_stdout's own
+                    "bam_reheader.c": (
+                        'bam_reheader(in->fp.bgzf, h, fileno({}_stdout),'.format(basename),
+                        'bam_reheader(in->fp.bgzf, h, dup(fileno({}_stdout)),'.format(basename))
                     }
                 if fn in SPECIFIC_SUBSTITUTIONS:
                     lines = lines.replace(

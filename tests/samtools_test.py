@@ -22,8 +22,9 @@ def setUpModule():
 def run_command(cmd):
     '''run a samtools command'''
     try:
+        # stderr is not read, so a PIPE here can fill up and deadlock
         retcode = subprocess.call(cmd, shell=True,
-                                  stderr=subprocess.PIPE)
+                                  stderr=subprocess.DEVNULL)
         if retcode < 0:
             print("Child was terminated by signal", -retcode)
     except OSError as e:
