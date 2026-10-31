@@ -1,6 +1,5 @@
 import os
 import subprocess
-import sys
 import threading
 import errno
 
@@ -43,8 +42,6 @@ class TestStream:
                 read += 1
         return 0, read
 
-    @pytest.mark.skipif(sys.platform == "win32",
-                        reason="htslib raises SIGTERM on writes to a closed pipe on Windows")
     def test_text_processing(self):
         with subprocess.Popen('head -n200',
                               stdin=subprocess.PIPE,
