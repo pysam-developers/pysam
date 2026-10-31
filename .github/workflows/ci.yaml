@@ -186,6 +186,8 @@ jobs:
           PYTHONPATH=. python ../../devtools/smoke-test.py
 
       - name: Run tests
+        env:
+          PYTHONUTF8: 1  # Otherwise setuptools detaches sys.stdout during compile_test's pyximport build
         run:  PYTHONPATH="$(cygpath -w "$(echo $PWD/build/lib.*)")" pytest
 
 
