@@ -55,6 +55,7 @@ cdef class IteratorRow:
     cdef hts_idx_t * index
     cdef AlignmentHeader header
     cdef int owns_samfile
+    cdef int owns_index
 
 
 cdef class IteratorRowRegion(IteratorRow):
