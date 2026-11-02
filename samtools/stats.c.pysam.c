@@ -52,7 +52,6 @@ DEALINGS IN THE SOFTWARE.  */
 #include <getopt.h>
 #include <errno.h>
 #include <assert.h>
-#include <zlib.h>   // for crc32
 #include <htslib/faidx.h>
 #include <htslib/sam.h>
 #include <htslib/hts.h>
@@ -369,15 +368,50 @@ void round_buffer_flush(stats_t *stats, hts_pos_t pos)
     stats->cov_rbuf.pos   = new_pos;
 }
 
+// Grow the coverage round buffer so that it can hold the reference
+// positions [rbuf->pos, rbuf->pos + needed).  The pending counts are
+// linearised into the new buffer, so afterwards rbuf->start is 0 and
+// rbuf->buffer[i] holds position rbuf->pos + i.
+static void round_buffer_resize(round_buffer_t *rbuf, hts_pos_t needed)
+{
+    if ( needed <= rbuf->size )
+        return;
+    if ( needed > INT_MAX/2 )
+        error("The coverage buffer would need %"PRIhts_pos" entries\n", needed);
+
+    int new_size = rbuf->size > 0 ? rbuf->size : 1;
+    while ( new_size < needed )
+        new_size *= 2;
+
+    int *nbuf = calloc(new_size, sizeof(*nbuf));
+    if ( !nbuf )
+        error("Could not allocate coverage distribution buffer\n");
+
+    if ( rbuf->buffer )
+    {
+        int n = rbuf->size - rbuf->start;
+        memcpy(nbuf, rbuf->buffer + rbuf->start, n * sizeof(*nbuf));
+        if ( rbuf->start > 0 )
+            memcpy(nbuf + n, rbuf->buffer, rbuf->start * sizeof(*nbuf));
+        free(rbuf->buffer);
+    }
+    rbuf->buffer = nbuf;
+    rbuf->size   = new_size;
+    rbuf->start  = 0;
+}
+
 /**
  * [from, to) - 0 based half-open
  */
 static void round_buffer_insert_read(round_buffer_t *rbuf, hts_pos_t from, hts_pos_t to)
 {
-    if ( to-from > rbuf->size )
-        error("The read length too big (%"PRIhts_pos"), please increase the buffer length (currently %d)\n", to-from, rbuf->size);
     if ( from < rbuf->pos )
         error("The reads are not sorted (%"PRIhts_pos" comes after %"PRIhts_pos").\n", from, rbuf->pos);
+    // The buffer is indexed modulo its size relative to rbuf->pos, so a
+    // block ending beyond rbuf->pos + size (e.g. the far exon of a spliced
+    // alignment) would wrap around onto positions near the read start.
+    if ( to - rbuf->pos > rbuf->size )
+        round_buffer_resize(rbuf, to - rbuf->pos);
 
     int ifrom, ito, ibuf;
     ifrom = round_buffer_lidx2ridx(rbuf->start, rbuf->size, rbuf->pos, from);
@@ -765,19 +799,8 @@ void realloc_buffers(stats_t *stats, int seq_len)
 
     stats->nbases = n;
 
-    // Realloc the coverage distribution buffer
-    int *rbuffer = calloc(sizeof(int),seq_len*5);
-    if (!rbuffer) {
-        error("Could not allocate coverage distribution buffer");
-    }
-    n = stats->cov_rbuf.size-stats->cov_rbuf.start;
-    memcpy(rbuffer,stats->cov_rbuf.buffer+stats->cov_rbuf.start,n);
-    if ( stats->cov_rbuf.start>1 )
-        memcpy(rbuffer+n,stats->cov_rbuf.buffer,stats->cov_rbuf.start);
-    stats->cov_rbuf.start = 0;
-    free(stats->cov_rbuf.buffer);
-    stats->cov_rbuf.buffer = rbuffer;
-    stats->cov_rbuf.size = seq_len*5;
+    // Realloc the coverage distribution buffer, keeping the pending counts
+    round_buffer_resize(&stats->cov_rbuf, (hts_pos_t)seq_len*5);
 
     realloc_rseq_buffer(stats);
 }
@@ -787,16 +810,16 @@ void update_checksum(bam1_t *bam_line, stats_t *stats)
     uint8_t *name = (uint8_t*) bam_get_qname(bam_line);
     int len = 0;
     while ( name[len] ) len++;
-    stats->checksum.names +=  crc32(0L, name, len);
+    stats->checksum.names +=  hts_crc32(0L, name, len);
 
     int seq_len = bam_line->core.l_qseq;
     if ( !seq_len ) return;
 
     uint8_t *seq = bam_get_seq(bam_line);
-    stats->checksum.reads += crc32(0L, seq, (seq_len+1)/2);
+    stats->checksum.reads += hts_crc32(0L, seq, (seq_len+1)/2);
 
     uint8_t *qual = bam_get_qual(bam_line);
-    stats->checksum.quals += crc32(0L, qual, seq_len);
+    stats->checksum.quals += hts_crc32(0L, qual, seq_len);
 }
 
 // Collect statistics about the barcode tags specified by init_barcode_tags method
@@ -1218,7 +1241,7 @@ void collect_stats(bam1_t *bam_line, stats_t *stats, khash_t(qn2pair) *read_pair
     if ( stats->rg_hash )
     {
         const uint8_t *rg = bam_aux_get(bam_line, "RG");
-        if ( !rg ) return;  // certain read groups were requested but this record has none
+        if ( !rg || *rg != 'Z') return;  // certain read groups were requested but this record has none
         khint_t k = kh_get(rg, stats->rg_hash, (const char*)(rg + 1));
         if ( k == kh_end((kh_rg_t *)stats->rg_hash) ) return;
     }
@@ -1253,12 +1276,6 @@ void collect_stats(bam1_t *bam_line, stats_t *stats, khash_t(qn2pair) *read_pair
     int seq_len = bam_line->core.l_qseq;
     if ( !seq_len ) return;
 
-    if ( IS_DUP(bam_line) )
-    {
-        stats->total_len_dup += seq_len;
-        stats->nreads_dup++;
-    }
-
     uint32_t order = IS_PAIRED(bam_line) ? (IS_READ1(bam_line) ? READ_ORDER_FIRST : 0) + (IS_READ2(bam_line) ? READ_ORDER_LAST : 0) : READ_ORDER_FIRST;
 
     int read_len = unclipped_length(bam_line);
@@ -1280,6 +1297,14 @@ void collect_stats(bam1_t *bam_line, stats_t *stats, khash_t(qn2pair) *read_pair
     // These stats should only be calculated for the original reads ignoring supplementary artificial reads
     // otherwise we'll accidentally double count
     if ( IS_ORIGINAL(bam_line) ) {
+        // Count duplicates here as well, so that "reads duplicated" and
+        // "bases duplicated" refer to the same reads as "sequences" and
+        // "total length" (secondary and supplementary records excluded).
+        if ( IS_DUP(bam_line) )
+        {
+            stats->total_len_dup += seq_len;
+            stats->nreads_dup++;
+        }
         stats->read_lengths[read_len]++;
         if ( order == READ_ORDER_FIRST ) stats->read_lengths_1st[read_len]++;
         if ( order == READ_ORDER_LAST ) stats->read_lengths_2nd[read_len]++;
@@ -1404,7 +1429,7 @@ void collect_stats(bam1_t *bam_line, stats_t *stats, khash_t(qn2pair) *read_pair
         }
 
         // Mismatches per cycle and GC-depth graph. For simplicity, reads overlapping GCD bins
-        //  are not splitted which results in up to seq_len-1 overlaps. The default bin size is
+        //  are not split which results in up to seq_len-1 overlaps. The default bin size is
         //  20kbp, so the effect is negligible.
         if ( stats->info->fai )
         {
@@ -1560,7 +1585,13 @@ void output_stats(FILE *to, stats_t *stats, int sparse)
         nisize += stats->isize->inward(stats->isize->data, isize) + stats->isize->outward(stats->isize->data, isize) + stats->isize->other(stats->isize->data, isize);
     }
 
-    for (isize=0; isize<stats->isize->nitems(stats->isize->data); isize++)
+    // Pairs with isize 0 (TLEN unknown) are left out of the main-bulk
+    // cut-off, the average and the standard deviation, from the numerator and
+    // the denominator alike.  The IS rows below still list them.
+    uint64_t nisize_zero = stats->isize->inward(stats->isize->data, 0) + stats->isize->outward(stats->isize->data, 0) + stats->isize->other(stats->isize->data, 0);
+    nisize = nisize > nisize_zero ? nisize - nisize_zero : 0;
+    if (nisize_zero > 0) ibulk = 1;
+    for (isize=1; isize<stats->isize->nitems(stats->isize->data); isize++)
     {
         uint64_t num = stats->isize->inward(stats->isize->data, isize) +  stats->isize->outward(stats->isize->data, isize) + stats->isize->other(stats->isize->data, isize);
         if (num > 0) ibulk = isize + 1;
@@ -2209,7 +2240,7 @@ error(const char *format, ...)
         fprintf(samtools_stdout, "    -p, --remove-overlaps               Remove overlaps of paired-end reads from coverage and base count computations.\n");
         fprintf(samtools_stdout, "    -g, --cov-threshold <int>           Only bases with coverage above this value will be included in the target percentage computation [0]\n");
         fprintf(samtools_stdout, "        --ref-stats                     Create statistics on reference data.\n");
-        fprintf(samtools_stdout, "        --ref-stats-chunk <int>         Reference retrival chunk size, in Mbs, for reference statistics [1].\n");
+        fprintf(samtools_stdout, "        --ref-stats-chunk <int>         Reference retrieval chunk size, in Mbs, for reference statistics [1].\n");
         sam_global_opt_help(samtools_stdout, "-.--.@-.");
         fprintf(samtools_stdout, "\n");
     }
@@ -2471,29 +2502,35 @@ static stats_t* get_curr_split_stats(bam1_t* bam_line, khash_t(c2stats)* split_h
     if(tag_val == 0){
         error("Tag '%s' not found in bam_line.\n", info->split_tag);
     }
-    char* split_name = strdup(bam_aux2Z(tag_val));
 
-    // New stats object, under split
+    char* split_name = bam_aux2Z(tag_val);
+    if (!split_name)
+        error("Tag '%s' on read %s is type '%c', not 'Z' (string).\n",
+              info->split_tag, bam_get_qname(bam_line), *tag_val);
+
     khiter_t k = kh_get(c2stats, split_hash, split_name);
     if(k == kh_end(split_hash)){
+        // New stats object, under split
+        char *dup_name = strdup(split_name);
+        if (!dup_name)
+            error("Couldn't allocate name for split");
         curr_stats = stats_init(); // mallocs new instance
         if (!curr_stats) {
             error("Couldn't allocate split stats");
         }
         init_stat_structs(curr_stats, info, NULL, targets);
-        curr_stats->split_name = split_name;
+        curr_stats->split_name = dup_name;
 
         // Record index in hash
         int ret = 0;
         khiter_t iter = kh_put(c2stats, split_hash, split_name, &ret);
         if( ret < 0 ){
-            error("Failed to insert key '%s' into split_hash", split_name);
+            error("Failed to insert key '%s' into split_hash", dup_name);
         }
         kh_val(split_hash, iter) = curr_stats; // store pointer to stats
     }
     else{
         curr_stats = kh_value(split_hash, k);
-        free(split_name); // don't need to hold on to this if it wasn't new
     }
     return curr_stats;
 }
@@ -2674,7 +2711,7 @@ void collect_refstats(stats_t *stats)
                 cntN += bc['N'] + bc['n'];
                 free(buf);
                 if (tmp < tmpend) {
-                    //asked and didnt get whole --> nothing more
+                    //asked and didn't get whole --> nothing more
                     break;
                 }
                 start += tmp;

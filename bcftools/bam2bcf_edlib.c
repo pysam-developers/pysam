@@ -523,7 +523,7 @@ static char **bcf_cgp_consensus(int n, int *n_plp, bam_pileup1_t **plp,
         // signal.  We want to use the remaining data only to correct
         // for sequencing errors in low depth alleles.  If we get
         // conflicts, it's better to use N than to change a base
-        // incase that variant is genuine.
+        // in case that variant is genuine.
         if (i+left >= pos+1 && i+left < pos+1-biggest_del) {
             // We're overlapping the current indel region, so
             // we don't wish to bring in evidence from the other
@@ -568,7 +568,7 @@ static char **bcf_cgp_consensus(int n, int *n_plp, bam_pileup1_t **plp,
         }
         max_len += ins;
     }
-    max_len += MAX(0, type); // incase type inserted bases never occur
+    max_len += MAX(0, type); // in case type inserted bases never occur
     cons = malloc((max_len+1)*2 + sizeof(char *)*2);
     if (!cons)
         goto err;
@@ -1009,7 +1009,7 @@ static int bcf_cgp_align_score(bam_pileup1_t *p, bcf_callaux_t *bca,
     // the top bits are unnormalised.
     //
     // Try original cons and new cons and pick best.
-    // This doesn't reduce FN much (infact maybe adds very slightly),
+    // This doesn't reduce FN much (in fact maybe adds very slightly),
     // but it does reduce GT errors and is a slight reduction to FP.
 
     double mm = 30; // a const average qual for now. Could tune
@@ -1160,7 +1160,7 @@ static int bcf_cgp_compute_indelQ(int n, int *n_plp, bam_pileup1_t **plp,
             //
             // Enabling this causes lots of GT errors on Illumina.
             // However on PacBio it's key to removal of false positives.
-            // ONT and UG seem somewhere inbetween.
+            // ONT and UG seem somewhere in between.
             if (bca->poly_mqual) { // TEST 4
                 int qpos = p->qpos, l;
                 uint8_t *seq = bam_get_seq(p->b);
@@ -1209,7 +1209,7 @@ static int bcf_cgp_compute_indelQ(int n, int *n_plp, bam_pileup1_t **plp,
             // high score = bad, low score = good; flip for indelQ
             // low normalised scores leave indelQ unmodified
             // high normalised scores set indelQ to 0
-            // inbetween scores have a linear scale from indelQ to 0
+            // in-between scores have a linear scale from indelQ to 0
 // Altering the MAGIC value below (originally 111, but chosen for unknown
 // reasons) is comparable to altering --indel-bias.
 #define TMP_MAGIC 255.0

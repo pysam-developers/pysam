@@ -1,6 +1,6 @@
 /*  vcfindex.c -- Index bgzip compressed VCF/BCF files for random access.
 
-    Copyright (C) 2014-2025 Genome Research Ltd.
+    Copyright (C) 2014-2026 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -167,6 +167,11 @@ int vcf_index_stats(char *fname, int stats)
             idx = bcf_index_load(fname);
         } else if ( ext && (ext-fname) > 4 && strcmp(ext-4, ".vcf.gz") == 0 ) {
             tbx = tbx_index_load(fname);
+        }
+        else if ( !idx && !tbx )
+        {
+            idx = bcf_index_load(fname);
+            if ( !idx ) tbx = tbx_index_load(fname);
         }
     }
 
