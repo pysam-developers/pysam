@@ -1290,7 +1290,7 @@ static void process_pbinom(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isa
     {
         double pval = calc_binom_two_sided(n[0],n[1],0.5);
 
-        // convrt to phred
+        // convert to phred
         if ( pval>=1 ) pval = 0;
         else pval = -4.34294481903*log(pval);
         kputd(pval, str);

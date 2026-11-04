@@ -637,7 +637,7 @@ static void filters_cmp_string_hash(token_t *atok, token_t *btok, token_t *rtok,
     if ( rtok->tok_type!=TOK_EQ && rtok->tok_type!=TOK_NE )
         error("Only == and != operators are supported for strings read from a file\n");
     if ( !btok->is_str )
-        error("Error: Lookup of values from a file is currenlty supported only for strings\n");
+        error("Error: Lookup of values from a file is currently supported only for strings\n");
 
     // INFO
     if ( !btok->nsamples )
@@ -2897,22 +2897,24 @@ static int vector_logic_and(filter_t *filter, bcf1_t *line, token_t *rtok, token
         } \
     } \
 }
-static int _regex_vector_strings(regex_t *regex, char *str, size_t len, int logic, int *missing_logic)
+// Returns true if any comma-separated element satisfies the ~ or !~ comparison.
+static int _regex_vector_strings(regex_t *regex, char *str, size_t len, int logic)
 {
     char *end = str + len;
     while ( str < end && *str )
     {
         char *mid = str;
         while ( mid < end && *mid && *mid!=',' ) mid++;
-        int miss = mid - str == 1 && str[0]=='.' ? 1 : 0;
-        int match = ( miss && missing_logic[miss] ) ? 1 : 0;
-        if ( logic==TOK_NLIKE ) match = match ? 0 : 1;
-        if ( match ) return 1;
-        char tmp = *mid; *mid = 0;
-        match = regexec(regex, str, 0,NULL,0) ? 0 : 1;
+
+        // Temporarily terminate this element for regexec().
+        char tmp = *mid;
+        *mid = 0;
+        int match = regexec(regex, str, 0,NULL,0) ? 0 : 1;
         *mid = tmp;
+
         if ( logic==TOK_NLIKE ) match = match ? 0 : 1;
         if ( match ) return 1;
+
         if ( !*mid ) break;
         str = mid + 1;
     }
@@ -2977,6 +2979,10 @@ static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok)
     assert( !atok->nsamples || !btok->nsamples );
     assert( (!regex && (logic==TOK_EQ || logic==TOK_NE)) || (regex && (logic==TOK_LIKE || logic==TOK_NLIKE)) );
 
+    // missing_logic[x]:
+    //   0 .. can any comparison involving missing values pass?
+    //   1 .. result when exactly one operand is missing
+    //   2 .. result when both operands are missing
     int missing_logic[] = {0,0,0};
     if ( logic==TOK_EQ || logic==TOK_LIKE ) missing_logic[0] = missing_logic[2] = 1;
     else if ( logic==TOK_NE || logic==TOK_NLIKE ) missing_logic[0] = missing_logic[1] = 1;
@@ -2995,7 +3001,7 @@ static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok)
         else
         {
             token_t *tok = atok->regex ? btok : atok;
-            rtok->pass_site = _regex_vector_strings(regex, tok->str_value.s, tok->str_value.l, logic, missing_logic);
+            rtok->pass_site = _regex_vector_strings(regex, tok->str_value.s, tok->str_value.l, logic);
         }
         return;
     }
@@ -3040,7 +3046,7 @@ static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok)
         if ( !rtok->usmpl[i] ) continue;
         int match;
         if ( regex )
-            match = _regex_vector_strings(regex, xtok->str_value.s + i*xtok->nval1, xtok->nval1, logic, missing_logic);
+            match = _regex_vector_strings(regex, xtok->str_value.s + i*xtok->nval1, xtok->nval1, logic);
         else
             match = _match_vector_strings(xtok->str_value.s + i*xtok->nval1, xtok->nval1, ytok->str_value.s, ytok->str_value.l, logic, missing_logic);
         if ( match ) { rtok->pass_samples[i] = 1; rtok->pass_site = 1; }

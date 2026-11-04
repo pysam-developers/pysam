@@ -198,7 +198,8 @@ cdef decode_bytes(bytes s, encoding=None, errors=None):
 cdef OSError_from_errno(message, filename=None):
     cdef int err = errno
     if filename is not None: filename = os.fsdecode(filename)
-    return OSError(err, f"{message}: {strerror(err).decode()}", filename)
+    if err != 0: return OSError(err, f"{message}: {strerror(err).decode()}", filename)
+    else: return OSError(f"{message}: {filename!r}") if filename else OSError(message)
 
 
 cpdef parse_region(contig=None,
@@ -359,6 +360,7 @@ def _pysam_dispatch(collection,
             "mpileup": "-o {}",
             "depad": "-o {}",
             "calmd": "",  # uses pysam_stdout_fn
+            "faidx": "",  # uses pysam_stdout_fn
         },
             "bcftools": {}
         }
@@ -370,14 +372,12 @@ def _pysam_dispatch(collection,
             if method not in ("head", "index", "roh", "stats"):
                 stdout_option = "-o {}"
         elif method in MAP_STDOUT_OPTIONS[collection]:
-            # special case - samtools view -c outputs on stdout
-            if not(method == "view" and "-c" in args):
-                stdout_option = MAP_STDOUT_OPTIONS[collection][method]
+            stdout_option = MAP_STDOUT_OPTIONS[collection][method]
 
         if stdout_option is not None and not is_usage:
             os.close(stdout_h)
             stdout_f_bytes = force_bytes(stdout_f)
-            args.extend(stdout_option.format(stdout_f).split(" "))
+            args[0:0] = stdout_option.format(stdout_f).split(maxsplit=1)
             stdout_h = c_open(force_bytes(os.devnull), O_WRONLY)
         else:
             stdout_f_bytes = None

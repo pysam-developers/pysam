@@ -2,7 +2,7 @@
 
 /*  bam_fastq.c -- FASTA and FASTQ file generation
 
-    Copyright (C) 2009-2017, 2019-2020, 2023-2025 Genome Research Ltd.
+    Copyright (C) 2009-2017, 2019-2020, 2023-2026 Genome Research Ltd.
     Portions copyright (C) 2009, 2011, 2012 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -924,7 +924,7 @@ int output_index(bam1_t *b1, bam1_t *b2, bam2fq_state_t *state,
         bc = (char *)bam_aux_get(b1, opts->barcode_tag);
     if (b2 && !bc)
         bc = (char *)bam_aux_get(b2, opts->barcode_tag);
-    if (!bc)
+    if (!bc || *bc != 'Z')
         return 0;
     else
         bc++; // skip Z
@@ -933,7 +933,7 @@ int output_index(bam1_t *b1, bam1_t *b2, bam2fq_state_t *state,
         qt = (char *)bam_aux_get(b1, opts->quality_tag);
     if (b2 && !qt)
         qt = (char *)bam_aux_get(b2, opts->quality_tag);
-    if (qt && strlen(bc) != strlen(qt)-1)
+    if (qt && (*qt != 'Z' || strlen(bc) != strlen(qt)-1))
         qt = NULL;
     else if (qt)
         qt++;
@@ -1079,7 +1079,7 @@ static int removesoftclips(const char *prg, bam1_t *b, kstring_t *clipbuf, const
     uint8_t *ptr, *bptr, *qptr, *nbptr, *nqptr, op, prevop, *auxb = NULL,
         *auxq = NULL;
     uint32_t oplen, slen = 0, dlen = 0, *cptr;
-    int64_t auxlen = 0; //n64bit as later multipled with -1 in during ptr update
+    int64_t auxlen = 0; //64bit as later multiplied with -1 during ptr update
     const char seq_nt16flip_str[] = "!TGKCYSBAWRDMHVN", *base = seq_nt16_str;
     char tag[2] = {'s','0'};
     if (!b) return -1;               //invalid params

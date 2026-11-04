@@ -1,6 +1,6 @@
 /*  sam_opts.c -- utilities to aid parsing common command line options.
 
-    Copyright (C) 2015, 2019, 2025 Genome Research Ltd.
+    Copyright (C) 2015, 2019, 2025-2026 Genome Research Ltd.
 
     Author: James Bonfield <jkb@sanger.ac.uk>
 
@@ -30,6 +30,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <limits.h>
 #include <stdbool.h>
 #include "sam_opts.h"
+#include "samtools.h"
 
 /*
  * Parse an integer from a value passed on the command-line. Return true on
@@ -226,6 +227,40 @@ void sam_global_args_init(sam_global_args *ga) {
         return;
 
     memset(ga, 0, sizeof(*ga));
+}
+
+/*
+ * Add the standard samtools @PG provenance line.  See samtools.h for details.
+ */
+int samtools_add_pg_line(sam_hdr_t *h, const char *arg_list, int no_pg) {
+    if (no_pg)
+        return 0;
+
+    const char *sam_ver = samtools_version(), *hts_ver = hts_version();
+    const char *version = sam_ver;
+    char version_buf[256];
+    int sam_maj, sam_min, hts_maj, hts_min;
+
+    // SAMtools and HTSlib are released together and have matching major and
+    // minor version numbers, so the HTSlib version can normally be deduced from
+    // the SAMtools one.  Only record it when it cannot be, i.e. when the major
+    // or minor numbers differ.
+    if (!(sscanf(sam_ver, "%d.%d", &sam_maj, &sam_min) == 2 &&
+          sscanf(hts_ver, "%d.%d", &hts_maj, &hts_min) == 2 &&
+          sam_maj == hts_maj && sam_min == hts_min)) {
+        snprintf(version_buf, sizeof(version_buf), "%s (with HTSlib %s)",
+                 sam_ver, hts_ver);
+        version = version_buf;
+    }
+
+    if (sam_hdr_add_pg(h, "samtools",
+                       "VN", version,
+                       arg_list ? "CL" : NULL,
+                       arg_list ? arg_list : NULL,
+                       NULL) == -1)
+        return -1;
+
+    return 0;
 }
 
 void sam_global_args_free(sam_global_args *ga) {

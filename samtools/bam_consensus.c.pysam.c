@@ -191,9 +191,9 @@ typedef unsigned char uc;
 // Simple recalibration table for substitutions, undercalls and overcalls.
 // In future, we'll update this to be kmer based too.
 typedef struct {
-    int smap[101]; // substituion or SNP
-    int umap[101]; // undercall   or DEL
-    int omap[101]; // overcall    or INS
+    int smap[101]; // substitution or SNP
+    int umap[101]; // undercall    or DEL
+    int omap[101]; // overcall     or INS
 } qcal_t;
 
 // Persistent data used per thread and reused in each job operating in
@@ -1153,6 +1153,8 @@ int nm_init(void *client_data, samFile *fp, sam_hdr_t *h, pileup_t *p) {
     if (!md)
         return 1;
     md = (const uint8_t *)bam_aux2Z(md);
+    if (!md)
+        return 1; // Wrong type
 
     // Handle cost of being near a soft-clip
     uint32_t *cig = bam_get_cigar(b);
@@ -2623,7 +2625,7 @@ static int fill_reglist_tid(sam_hdr_t *h, hts_reglist_t *rl, int *nregs) {
 
 // Parallel consensus generation.
 //
-// Executes in the main thread but despatches jobs to the worker thread to
+// Executes in the main thread but dispatches jobs to the worker thread to
 // do the bulk of the pileup/fastq creation.
 int pileup_loop_parallel(consensus_opts *opts) {
     int chr = 0, err = -1;

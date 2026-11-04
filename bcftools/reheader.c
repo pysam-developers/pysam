@@ -263,6 +263,7 @@ static int set_sample_pairs(char **samples, int nsamples, kstring_t *hdr, int id
             escaped = 0;
             ptr++;
         }
+        if ( !val.s ) error("Error: invalid sample name, trailing whitespace detected \"%s\"\n",samples[i]);
         khash_str2str_set(hash,strdup(key.s),strdup(val.s));
     }
     free(key.s);
@@ -312,6 +313,15 @@ static int set_sample_pairs(char **samples, int nsamples, kstring_t *hdr, int id
     return 1;
 }
 
+static void validate_sample_name(const char *name)
+{
+    const char *ptr = name;
+    while ( *ptr )
+    {
+        if ( *ptr=='\t' ) error("Error: invalid sample name \"%s\"\n",name);
+        ptr++;
+    }
+}
 static void set_samples(char **samples, int nsamples, kstring_t *hdr)
 {
     // Find the beginning of the #CHROM line
@@ -346,6 +356,7 @@ static void set_samples(char **samples, int nsamples, kstring_t *hdr)
 
     for (i=0; i<nsamples; i++)
     {
+        validate_sample_name(samples[i]);
         kputc('\t', hdr);
         kputs(samples[i], hdr);
     }

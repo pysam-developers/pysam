@@ -90,6 +90,7 @@ typedef struct _args_t
     int write_index;
     int trim_star_allele;
     htsFile *out;
+    progress_t *progress;
 }
 args_t;
 
@@ -208,7 +209,7 @@ static void init_data(args_t *args)
         int i, n;
         char **list = hts_readlist(args->include_types ? args->include_types : args->exclude_types, 0, &n);
         if ( !n || !list )
-            error("Error: coult not parse the --include-types/--exclude-types type list\n");
+            error("Error: could not parse the --include-types/--exclude-types type list\n");
         for (i=0; i<n; i++)
         {
             parse_vtype(list[i], args->include_types ? &args->include : &args->exclude);
@@ -259,6 +260,7 @@ static void destroy_data(args_t *args)
     if ( args->filter )
         filter_destroy(args->filter);
     free(args->ac);
+    free(args->progress);
 }
 
 // true if all samples are phased.
@@ -506,6 +508,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "        --no-version                  Do not append version and command line to the header\n");
     fprintf(bcftools_stderr, "    -o, --output FILE                 Output file name [bcftools_stdout]\n");
     fprintf(bcftools_stderr, "    -O, --output-type u|b|v|z[0-9]    u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
+    fprintf(bcftools_stderr, "        --progress[=INT]              Print the current position (CHR:POS) to bcftools_stderr every INT seconds [60]\n");
     fprintf(bcftools_stderr, "    -r, --regions REGION              Restrict to comma-separated list of regions\n");
     fprintf(bcftools_stderr, "    -R, --regions-file FILE           Restrict to regions listed in FILE\n");
     fprintf(bcftools_stderr, "        --regions-overlap 0|1|2       Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
@@ -591,6 +594,7 @@ int main_vcfview(int argc, char *argv[])
         {"output-type",required_argument,NULL,'O'},
         {"output-file",required_argument,NULL,'o'},
         {"output",required_argument,NULL,'o'},
+        {"progress",optional_argument,NULL,11},
         {"types",required_argument,NULL,'v'},
         {"exclude-types",required_argument,NULL,'V'},
         {"targets",required_argument,NULL,'t'},
@@ -743,6 +747,7 @@ int main_vcfview(int argc, char *argv[])
             case 10 :
                 if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
                 break;
+            case 11 : args->progress = progress_init("view", optarg); break;
 
             case 'W':
                 if (!(args->write_index = write_index_parse(optarg)))
@@ -814,6 +819,7 @@ int main_vcfview(int argc, char *argv[])
         while ( bcf_sr_next_line(args->files) )
         {
             bcf1_t *line = args->files->readers[0].buffer[0];
+            if ( args->progress ) progress_update(args->progress, bcf_seqname(args->hdr,line), line->pos+1);
             if ( line->errcode && out_hdr!=args->hdr ) error("Undefined tags in the header, cannot proceed in the sample subset mode.\n");
             if ( subset_vcf(args, line) && bcf_write1(args->out, out_hdr, line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->fn_out);
         }

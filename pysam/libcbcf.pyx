@@ -4817,10 +4817,8 @@ cdef class VariantFile(HTSFile):
                 raise StopIteration
             elif ret == -2:
                 raise IOError('truncated file')
-            elif errno:
-                raise OSError_from_errno("Unable to fetch next record", self.filename)
             else:
-                raise IOError('unable to fetch next record')
+                raise OSError_from_errno("Unable to fetch next record", self.filename)
 
         return makeVariantRecord(self.header, record)
 
@@ -4965,10 +4963,7 @@ cdef class VariantFile(HTSFile):
             self.htsfile = self._open_htsfile()
 
             if not self.htsfile:
-                if errno:
-                    raise OSError_from_errno("Could not open variant file", filename)
-                else:
-                    raise ValueError('could not open variant file `{}`'.format(filename))
+                raise OSError_from_errno("Could not open variant file", filename)
 
             fmt = hts_get_format(self.htsfile)
             if fmt.format not in (bcf, vcf):
@@ -4994,14 +4989,18 @@ cdef class VariantFile(HTSFile):
                 if index_filename is not None:
                     cindex_filename = index_filename
                 with nogil:
-                    idx = bcf_index_load2(cfilename, cindex_filename)
+                    idx = bcf_index_load3(cfilename, cindex_filename, HTS_IDX_SAVE_REMOTE|HTS_IDX_SILENT_FAIL)
+                if cindex_filename and not idx:
+                    raise OSError_from_errno("Could not open index file", cindex_filename)
                 self.index = makeBCFIndex(self.header, idx)
 
             elif fmt.compression == bgzf and cfilename:
                 if index_filename is not None:
                     cindex_filename = index_filename
                 with nogil:
-                    tidx = tbx_index_load2(cfilename, cindex_filename)
+                    tidx = tbx_index_load3(cfilename, cindex_filename, HTS_IDX_SAVE_REMOTE|HTS_IDX_SILENT_FAIL)
+                if cindex_filename and not tidx:
+                    raise OSError_from_errno("Could not open index file", cindex_filename)
                 self.index = makeTabixIndex(tidx)
 
             if not self.is_stream:

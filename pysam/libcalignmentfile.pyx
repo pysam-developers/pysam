@@ -918,13 +918,11 @@ cdef class AlignmentFile(HTSFile):
             else:
                 raise ValueError("not enough information to construct header. Please provide template, "
                                  "header, text or reference_names/reference_lengths")
-            self.htsfile = self._open_htsfile()
 
+            self.htsfile = self._open_htsfile()
             if self.htsfile == NULL:
-                if errno:
-                    raise OSError_from_errno("Could not open alignment file", filename)
-                else:
-                    raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
+                raise OSError_from_errno("Could not open alignment file", filename)
+
             if format_options and len(format_options):
                 self.add_hts_options(format_options)
             # set filename with reference sequences. If no filename
@@ -947,10 +945,7 @@ cdef class AlignmentFile(HTSFile):
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
-                if errno:
-                    raise OSError_from_errno("Could not open alignment file", filename)
-                else:
-                    raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
+                raise OSError_from_errno("Could not open alignment file", filename)
 
             if hts_get_format(self.htsfile).category != sequence_data:
                 raise ValueError("file does not contain alignment data")
@@ -1013,10 +1008,7 @@ cdef class AlignmentFile(HTSFile):
                                                      HTS_IDX_SAVE_REMOTE|HTS_IDX_SILENT_FAIL)
 
                     if not self.index and (cindexname or require_index):
-                        if errno:
-                            raise OSError_from_errno("Could not open index file", self.index_filename)
-                        else:
-                            raise IOError('unable to open index file `%s`' % self.index_filename)
+                        raise OSError_from_errno("Could not open index file", self.index_filename)
 
                 elif require_index:
                     raise IOError('unable to open index file')

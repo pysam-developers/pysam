@@ -37,6 +37,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <math.h>
+#include <sys/time.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -45,6 +46,7 @@
 #include <htslib/hts_os.h>
 #include <htslib/hts_defs.h>
 #include <htslib/bgzf.h>
+#include <htslib/thread_pool.h>
 #include "kheap.h"
 #include "bcftools.h"
 
@@ -86,6 +88,8 @@ typedef struct _args_t
     blk_t blk[MAX_TMP_FILES];
     uint32_t tmp_layers[MERGE_LAYERS];
     int write_index;
+    int n_threads;
+    htsThreadPool *tpool;
 }
 args_t;
 
@@ -272,7 +276,7 @@ static int write_packed_bcf(BGZF *fp, packed_bcf_t *src)
     else
     {
         // Record didn't fit in the main block.  To minimize the
-        // overflow, its packed_bcf_t data will be imcomplete.  A pointer to
+        // overflow, its packed_bcf_t data will be incomplete.  A pointer to
         // its bcf1_t struct will have been placed after the allele data
         // so we can finish the packing job and write it in the same format
         // the rest of the data
@@ -683,6 +687,15 @@ void merge_to_output(args_t *args)
     htsFile *out = hts_open(output_fname, wmode);
     if (!out) clean_files_and_throw(args, "[%s] Error: cannot open %s\n", __func__, output_fname);
 
+    if ( args->n_threads > 0 )
+    {
+        args->tpool = (htsThreadPool*) calloc(1, sizeof(htsThreadPool));
+        if ( !args->tpool ) clean_files_and_throw(args, "Failed to allocate memory\n");
+        if ( !(args->tpool->pool = hts_tpool_init(args->n_threads)) )
+            clean_files_and_throw(args, "Failed to initialize %d threads\n", args->n_threads);
+        hts_set_opt(out, HTS_OPT_THREAD_POOL, args->tpool);
+    }
+
     fprintf(bcftools_stderr,"Merging %zd temporary files\n", args->nblk);
     merge_blocks(args, out, output_fname, args->write_index, 0);
     fprintf(bcftools_stderr,"Done\n");
@@ -709,7 +722,8 @@ static void usage(args_t *args)
 #else
     fprintf(bcftools_stderr, "    -T, --temp-dir DIR             Temporary files [/tmp/bcftools.XXXXXX]\n");
 #endif
-    fprintf(bcftools_stderr, "    -v, --verbosity INT            Verbosity level\n");
+    fprintf(bcftools_stderr, "        --threads INT              Use multithreading with INT worker threads [0]\n");
+    fprintf(bcftools_stderr, "    -v, --verbosity INT            Verbosity level [3]\n");
     fprintf(bcftools_stderr, "    -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
@@ -762,6 +776,11 @@ static void destroy(args_t *args)
     bcf_hdr_destroy(args->hdr);
     free(args->mem_block);
     free(args->tmp_dir);
+    if ( args->tpool )
+    {
+        hts_tpool_destroy(args->tpool->pool);
+        free(args->tpool);
+    }
     free(args);
 }
 
@@ -784,6 +803,7 @@ int main_sort(int argc, char *argv[])
         {"help",no_argument,NULL,'h'},
         {"write-index",optional_argument,NULL,'W'},
         {"verbosity",required_argument,NULL,'v'},
+        {"threads",required_argument,NULL,9},
         {0,0,0,0}
     };
     char *tmp;
@@ -791,6 +811,7 @@ int main_sort(int argc, char *argv[])
     {
         switch (c)
         {
+            case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case 'v':
                 if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
                 break;
@@ -833,8 +854,25 @@ int main_sort(int argc, char *argv[])
     else args->fname = argv[optind];
 
     init(args);
+
+    struct timeval t0, t1;
+    if ( hts_verbose > HTS_LOG_WARNING ) gettimeofday(&t0, NULL);
     sort_blocks(args);
+    if ( hts_verbose > HTS_LOG_WARNING )
+    {
+        gettimeofday(&t1, NULL);
+        fprintf(bcftools_stderr,"Phase 1 (sort and merge to temporary files): %f seconds\n",
+                ((t1.tv_sec - t0.tv_sec) * 1e6 + (t1.tv_usec - t0.tv_usec)) / 1e6);
+        gettimeofday(&t0, NULL);
+    }
     merge_to_output(args);
+    if ( hts_verbose > HTS_LOG_WARNING )
+    {
+        gettimeofday(&t1, NULL);
+        fprintf(bcftools_stderr,"Phase 2 (merge temporary files to output): %f seconds\n",
+                ((t1.tv_sec - t0.tv_sec) * 1e6 + (t1.tv_usec - t0.tv_usec)) / 1e6);
+    }
+
     destroy(args);
 
     return 0;

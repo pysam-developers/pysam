@@ -107,6 +107,9 @@ def _update_pysam_files(cf, destdir):
                     "bam_md.c": (
                         'sam_open_format("-", mode_w',
                         'sam_open_format({}_stdout_fn, mode_w'.format(basename)),
+                    "faidx.c": (
+                        'bgzf_open("-", "wu"',
+                        'bgzf_open({}_stdout_fn, "wu"'.format(basename)),
                     "phase.c": (
                         'putc("ACGT"[f->seq[j] == 1? (c&3, {}_stdout) : (c>>16&3)]);'.format(basename),
                         'putc("ACGT"[f->seq[j] == 1? (c&3) : (c>>16&3)], {}_stdout);'.format(basename)),

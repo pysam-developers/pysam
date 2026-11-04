@@ -27,6 +27,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <stdio.h>
 #include <strings.h>
 #include <errno.h>
+#include <limits.h>
 #include <htslib/hts.h>
 #include "bcftools.h"
 #include "version.h"
@@ -120,6 +121,40 @@ int parse_overlap_option(const char *arg)
     else if ( strcasecmp(arg, "record") == 0 || strcmp(arg, "1") == 0 ) return 1;
     else if ( strcasecmp(arg, "variant") == 0 || strcmp(arg, "2") == 0 ) return 2;
     else return -1;
+}
+
+struct _progress_t
+{
+    const char *cmd;    // the command name to print
+    int interval;       // the number of seconds between two updates
+    time_t next;        // the time of the next update
+};
+
+progress_t *progress_init(const char *cmd, const char *interval)
+{
+    progress_t *prg = (progress_t*) calloc(1,sizeof(progress_t));
+    if ( !prg ) error("Could not allocate memory\n");
+    prg->cmd = cmd;
+    prg->interval = 60;
+    if ( interval )
+    {
+        char *tmp;
+        long val = strtol(interval,&tmp,10);
+        if ( tmp==interval || *tmp || val<0 || val>INT_MAX ) error("Could not parse argument: --progress=%s\n", interval);
+        prg->interval = val;
+    }
+    return prg;
+}
+
+void progress_update(progress_t *prg, const char *chr, hts_pos_t pos)
+{
+    if ( prg->interval )
+    {
+        time_t now = time(NULL);
+        if ( now < prg->next ) return;
+        prg->next = now + prg->interval;
+    }
+    fprintf(stderr,"[progress] %s: %s:%"PRIhts_pos"\n", prg->cmd, chr, pos);
 }
 
 // Used to set args->write_index in CLI.

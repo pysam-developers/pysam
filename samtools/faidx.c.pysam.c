@@ -613,7 +613,7 @@ int faidx_core(int argc, char *argv[], enum fai_format_options format)
             }
         }
     } else {
-        if (!(out.bgzf_fp = bgzf_open("-", "wu"))) {
+        if (!(out.bgzf_fp = bgzf_open(samtools_stdout_fn, "wu"))) {
             fprintf(samtools_stderr,"[faidx] Cannot open output for writing :%s.\n", strerror(errno) );
             goto exit2;
         }
