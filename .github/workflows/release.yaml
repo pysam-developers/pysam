@@ -38,6 +38,7 @@ jobs:
           CIBW_SKIP:  ${{ case(matrix.kind == 'many', '*-musllinux_*', '*-manylinux_*') }}
 
           CIBW_BUILD_VERBOSITY: 1
+          CIBW_ENVIRONMENT_LINUX: HTSLIB_CONFIGURE_OPTIONS="--with-libdeflate"
 
           # Avoid linking with non-system library libdeflate.dylib
           CIBW_ENVIRONMENT_MACOS: HTSLIB_CONFIGURE_OPTIONS="--without-libdeflate"
