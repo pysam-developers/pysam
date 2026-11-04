@@ -296,6 +296,8 @@ class TestIteratorColumn2:
         assert columns == [169, 170, 171]
 
     @pytest.mark.skipif(sys.platform.startswith("netbsd"), reason="exercises invalid accesses, crashing on NetBSD")
+    @pytest.mark.skipif(sys.platform == "win32",
+                        reason="PileupColumn reads its freed iterator's memory, which can crash on Windows")
     def testAccessOnClosedIterator(self):
         '''see issue 131
 

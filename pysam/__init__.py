@@ -1,5 +1,18 @@
 import os
+import sys
 import sysconfig
+
+if sys.platform == "win32":
+    # Writing to a closed pipe makes htslib raise SIGTERM on Windows, in place of
+    # SIGPIPE. Ignore it, as Python ignores SIGPIPE elsewhere, so that the write
+    # fails with an error rather than ending the process. Windows does not deliver
+    # SIGTERM from other processes, so only such raise() calls are affected.
+    import signal
+    if signal.getsignal(signal.SIGTERM) == signal.SIG_DFL:
+        try:
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        except ValueError:  # pysam imported outside the main thread
+            pass
 
 from pysam.libchtslib import *
 import pysam.libchtslib as libchtslib

@@ -60,10 +60,12 @@ def changedir(path):
 
 def run_configure(option):
     sys.stdout.flush()
+    # On Windows, shell=True runs cmd.exe, which cannot run ./configure itself
+    configure = "sh ./configure" if sys.platform == "win32" else "./configure"
     try:
         # Always disable ref-cache as its code is omitted from pysam's htslib/
         retcode = subprocess.call(
-            " ".join(("./configure", "--disable-ref-cache", option)),
+            " ".join((configure, "--disable-ref-cache", option)),
             shell=True)
         if retcode != 0:
             return False
@@ -312,6 +314,12 @@ class cy_build_ext(build_ext):
         super().initialize_options()
         self.cython_directives = global_cython_directives()
 
+    def finalize_options(self):
+        super().finalize_options()
+        # On Windows, pysam builds with MinGW-w64 rather than the default MSVC
+        if sys.platform == 'win32' and self.compiler is None:
+            self.compiler = 'mingw32'
+
     def check_ext_symbol_conflicts(self):
         """Checks for symbols defined in multiple extension modules,
         which can lead to crashes due to incorrect functions being invoked.
@@ -354,7 +362,8 @@ class cy_build_ext(build_ext):
 
         super().run()
         try:
-            if HTSLIB_MODE != 'separate':
+            # Windows DLLs each have their own symbol namespace, so duplicates cannot collide
+            if HTSLIB_MODE != 'separate' and sys.platform != 'win32':
                 self.check_ext_symbol_conflicts()
         except OSError as e:
             log.warning("skipping symbol collision check (invoking nm failed: %s)", e)
@@ -411,6 +420,13 @@ class cy_build_ext(build_ext):
                                     '-Wl,-headerpad_max_install_names',
                                     f'-Wl,-install_name,{library_path}',
                                     '-Wl,-x']
+        elif sys.platform == 'win32':
+            # Link MinGW runtime and compression libraries statically, as Python does not
+            # search PATH for DLLs. Cython's dllexport of PyInit_* disables MinGW's automatic
+            # export of all symbols, which the other modules need from libchtslib etc.
+            if not ext.extra_link_args:
+                ext.extra_link_args = []
+            ext.extra_link_args += ['-static', '-Wl,--export-all-symbols']
         else:
             if not ext.extra_link_args:
                 ext.extra_link_args = []
@@ -546,6 +562,16 @@ if HTSLIB_MODE in ['shared', 'separate']:
         external_htslib_libraries.extend(
             [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
 
+    if sys.platform == "win32" and "regex" in external_htslib_libraries:
+        # MSYS2's static libregex.a wraps TRE, which is not listed in htslib's LIBS
+        external_htslib_libraries.extend(["tre", "intl", "iconv"])
+
+    if sys.platform == "win32" and "curl" in external_htslib_libraries:
+        # Static libcurl needs CURL_STATICLIB and its own dependencies, which htslib's LIBS omits
+        define_macros.append(("CURL_STATICLIB", None))
+        curl_libs = subprocess.check_output(["pkg-config", "--static", "--libs-only-l", "libcurl"], encoding="ascii")
+        external_htslib_libraries.extend([re.sub("^-l", "", x) for x in curl_libs.split()])
+
     for_redistribution = truthy(os.environ.get("CIBUILDWHEEL", "0"))
 
     if for_redistribution:
@@ -625,35 +651,48 @@ for fn in config_headers:
                 "/* conservative compilation options */\n")
 
 #######################################################
-# Windows compatibility - untested
-if platform.system() == 'Windows':
-    include_os = ['win32']
-    os_c_files = ['win32/getopt.c']
-else:
-    include_os = []
-    os_c_files = []
-    # for python 3.4, see for example
-    # http://stackoverflow.com/questions/25587039/
-    # error-compiling-rpy2-on-python3-4-due-to-werror-
-    # declaration-after-statement
-    extra_compile_args.extend([
-        "-Wno-unused",
-        "-Wno-strict-prototypes",
-        "-Wno-sign-compare",
-        "-Wno-error=declaration-after-statement",
-    ])
+# Windows builds use MinGW-w64, which provides getopt() etc itself
+include_os = []
+os_c_files = []
+# for python 3.4, see for example
+# http://stackoverflow.com/questions/25587039/
+# error-compiling-rpy2-on-python3-4-due-to-werror-
+# declaration-after-statement
+extra_compile_args.extend([
+    "-Wno-unused",
+    "-Wno-strict-prototypes",
+    "-Wno-sign-compare",
+    "-Wno-error=declaration-after-statement",
+])
+
+if sys.platform == "win32" and sys.maxsize > 2**32:
+    # Before Python 3.12, pyconfig.h defines this only for MSVC, not MinGW
+    define_macros.append(("MS_WIN64", None))
+
+if sys.platform == "win32":
+    # htslib's config.h sets this, but samtools/bcftools sources include system headers
+    # before config.h, and MinGW's off_t and struct stat depend on it, so set it first
+    define_macros.append(("_FILE_OFFSET_BITS", "64"))
 
 suffix = sysconfig.get_config_var('EXT_SUFFIX')
 
+
+def internal_library(name):
+    if sys.platform == "win32":
+        # MinGW's ld links directly against a DLL, but only when given its full filename
+        return f":lib{name}{suffix}"
+    return os.path.splitext(f"{name}{suffix}")[0]
+
+
 internal_htslib_libraries = [
-    os.path.splitext(f"chtslib{suffix}")[0],
+    internal_library("chtslib"),
     ]
 internal_samtools_libraries = [
-    os.path.splitext(f"csamtools{suffix}")[0],
-    os.path.splitext(f"cbcftools{suffix}")[0],
+    internal_library("csamtools"),
+    internal_library("cbcftools"),
     ]
 internal_pysamutil_libraries = [
-    os.path.splitext(f"cutils{suffix}")[0],
+    internal_library("cutils"),
     ]
 
 libraries_for_pysam_module = external_htslib_libraries + internal_htslib_libraries + internal_pysamutil_libraries
@@ -772,6 +811,7 @@ Topic :: Scientific/Engineering
 Operating System :: POSIX
 Operating System :: Unix
 Operating System :: MacOS
+Operating System :: Microsoft :: Windows
 """
 
 metadata = {
@@ -783,7 +823,7 @@ metadata = {
     'author': "Andreas Heger",
     'author_email': "andreas.heger@gmail.com",
     'license': "MIT",
-    'platforms': ["POSIX", "UNIX", "MacOS"],
+    'platforms': ["POSIX", "UNIX", "MacOS", "Windows"],
     'classifiers': [_f for _f in classifiers.split("\n") if _f],
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,
