@@ -356,3 +356,30 @@ class TestPileUpColumns:
             "".join([chr(min(126, x + 33)) for x in l]) for l in pysam_result]
 
         assert pysam_result == samtools_result
+
+
+class TestPileupReusesLoadedIndex:
+    """pileup() should not reload the index from disk for every call.
+
+    https://github.com/pysam-developers/pysam/issues/1377
+    """
+
+    def test_pileup_after_index_file_removed(self, tmp_path):
+        import shutil
+
+        bam = tmp_path / "ex1.bam"
+        shutil.copy(os.path.join(BAM_DATADIR, "ex1.bam"), bam)
+        shutil.copy(os.path.join(BAM_DATADIR, "ex1.bam.bai"), tmp_path / "ex1.bam.bai")
+
+        with pysam.AlignmentFile(bam, "rb") as samfile:
+            assert samfile.has_index()
+            n_with_bai = sum(1 for _ in samfile.pileup("chr1", 0, 200, truncate=True))
+            assert n_with_bai > 0
+
+            # index has been loaded now
+            os.remove(tmp_path / "ex1.bam.bai")
+            for _ in range(3):
+                n_cols = sum(
+                    1 for _ in samfile.pileup("chr1", 0, 200, truncate=True)
+                )
+                assert n_cols == n_with_bai
