@@ -33,7 +33,7 @@ from warnings import warn
 ## Constants
 ########################################################################
 
-__all__ = ['get_verbosity', 'set_verbosity', 'set_runtime_libraries', 'HFile', 'HTSFile']
+__all__ = ['get_verbosity', 'set_verbosity', 'set_runtime_libraries', 'HFile', 'HTSFile', 'ThreadPool']
 
 # maximum genomic coordinace
 cdef int MAX_POS = (1 << 31) - 1
@@ -337,6 +337,46 @@ CFalse = CallableValue(False)
 
 ########################################################################
 ########################################################################
+## Thread pool shared between HTSFile objects
+########################################################################
+
+cdef class ThreadPool(object):
+    """ThreadPool(threads, qsize=0)
+
+    A pool of worker threads that several files can share for
+    compression and decompression, passed to them as `thread_pool`.
+
+    Parameters
+    ----------
+    threads: integer
+        Number of worker threads in the pool.
+
+    qsize: integer
+        Size of the job queue each file uses. 0 lets htslib choose
+        (twice the number of threads). (Default=0)
+    """
+
+    def __cinit__(self, int threads, int qsize=0):
+        if threads < 1:
+            raise ValueError("threads must be at least 1")
+        self.p.qsize = qsize
+        self.p.pool = hts_tpool_init(threads)
+        if self.p.pool == NULL:
+            raise MemoryError("could not create thread pool")
+
+    def __dealloc__(self):
+        if self.p.pool != NULL:
+            hts_tpool_destroy(self.p.pool)
+            self.p.pool = NULL
+
+    @property
+    def threads(self):
+        """number of worker threads in the pool"""
+        return hts_tpool_size(self.p.pool)
+
+
+########################################################################
+########################################################################
 ## HTSFile wrapper class (base class for AlignmentFile and VariantFile)
 ########################################################################
 
@@ -348,6 +388,7 @@ cdef class HTSFile(object):
     def __cinit__(self, *args, **kwargs):
         self.htsfile = NULL
         self.threads = 1
+        self.thread_pool = None
         self.duplicate_filehandle = True
 
     def close(self):
@@ -549,14 +590,20 @@ cdef class HTSFile(object):
         cdef char *cfilename
         cdef char *cmode = self.mode
         cdef int fd, dup_fd, threads
+        cdef htsThreadPool *pool = NULL
 
         threads = self.threads - 1
+        if self.thread_pool is not None:
+            pool = &(<ThreadPool?>self.thread_pool).p
         if isinstance(self.filename, bytes):
             cfilename = self.filename
             with nogil:
                 htsfile = hts_open(cfilename, cmode)
                 if htsfile != NULL:
-                    hts_set_threads(htsfile, threads)
+                    if pool != NULL:
+                        hts_set_thread_pool(htsfile, pool)
+                    else:
+                        hts_set_threads(htsfile, threads)
                 return htsfile
         else:
             if isinstance(self.filename, int):
@@ -592,7 +639,10 @@ cdef class HTSFile(object):
             with nogil:
                 htsfile = hts_hopen(hfile, cfilename, cmode)
                 if htsfile != NULL:
-                    hts_set_threads(htsfile, threads)
+                    if pool != NULL:
+                        hts_set_thread_pool(htsfile, pool)
+                    else:
+                        hts_set_threads(htsfile, threads)
                 return htsfile
 
     def add_hts_options(self, format_options):
