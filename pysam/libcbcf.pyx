@@ -3679,8 +3679,9 @@ cdef class VariantRecord(object):
     @pos.setter
     def pos(self, value):
         cdef int p = value
-        if p < 1:
-            raise ValueError('Position must be positive')
+        # POS=0 is used for telomeres
+        if p < 0:
+            raise ValueError('Position must be non-negative')
         self.ptr.pos = p - 1
         bcf_sync_end(self)
 
@@ -3692,8 +3693,9 @@ cdef class VariantRecord(object):
     @start.setter
     def start(self, value):
         cdef int s = value
-        if s < 0:
-            raise ValueError('Start coordinate must be non-negative')
+        # POS=0 (start=-1) is used for telomeres
+        if s < -1:
+            raise ValueError('Start coordinate must be -1 or greater')
         self.ptr.pos = s
         bcf_sync_end(self)
 
