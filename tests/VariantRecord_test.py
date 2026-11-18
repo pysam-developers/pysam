@@ -161,6 +161,42 @@ def test_repeated_new_record(vcf_header):
     assert record2.samples['sample2'].alleles == ('TCGA', 'A')
 
 
+def test_telomere_position_zero(vcf_header, tmp_path):
+    # Virtual telomeric breakend from the VCF specification
+    vcf_header.contigs.add("13")
+    vcf_header.info.add("MATEID", ".", "String", "Mate breakend IDs")
+    path = str(tmp_path / "telomere.vcf")
+    with open(path, "w") as f:
+        f.write(str(vcf_header))
+        f.write("1\t0\tbnd_X\tN\t.[13:123457[\t6\tPASS\tMATEID=bnd_V\t.\t.\n")
+    with pysam.VariantFile(path) as inf:
+        old = next(inf)
+    assert old.pos == 0
+    assert old.start == -1
+
+    rec = vcf_header.new_record(contig=old.contig, start=old.start, stop=old.stop,
+                                alleles=old.alleles, id=old.id)
+    assert rec.pos == 0
+    rec.pos = 1
+    rec.pos = 0
+    assert rec.start == -1
+    rec.start = -1
+    assert rec.pos == 0
+    with pytest.raises(ValueError):
+        rec.pos = -1
+    with pytest.raises(ValueError):
+        rec.start = -2
+
+    for suffix, mode in [("vcf", "w"), ("bcf", "wb")]:
+        path = str(tmp_path / ("out." + suffix))
+        with pysam.VariantFile(path, mode, header=vcf_header) as out:
+            out.write(rec)
+        with pysam.VariantFile(path) as inf:
+            actual = next(inf)
+        assert actual.pos == 0
+        assert actual.alleles == ("N", ".[13:123457[")
+
+
 def test_format_number_P(vcf_header):
     vcf_header.formats.add("GT", 1, "String", "Genotype")
     vcf_header.formats.add("X", "P", "Integer", "Per-genotype-allele value")
